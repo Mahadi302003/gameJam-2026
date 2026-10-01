@@ -24,6 +24,7 @@ import io
 import struct
 import wave
 import pygame
+from assets import AssetManager
 
 # ==============================================================================
 # 1. GAMEPLAY CONFIGURATION & DIFFICULTY TUNING
@@ -399,7 +400,39 @@ def create_jumpscare_surface():
 
 def create_painting_surfaces():
     w, h = 64, 40
-    # State 0: Normal portrait
+    try:
+        assets = AssetManager.get_instance()
+        p_norm = assets.sprites.get('portrait_normal')
+        p_corr = assets.sprites.get('portrait_corrupt')
+    except Exception:
+        p_norm, p_corr = None, None
+
+    if p_norm and p_corr:
+        s0 = pygame.Surface((w, h))
+        s0.fill((110, 80, 50))
+        pygame.draw.rect(s0, (40, 28, 20), (2, 2, w - 4, h - 4), 2)
+        norm_sc = pygame.transform.scale(p_norm, (w - 8, h - 8))
+        s0.blit(norm_sc, (4, 4))
+
+        s1 = s0.copy()
+        pygame.draw.circle(s1, (255, 255, 255), (w // 2 - 4, h // 2 - 3), 3)
+        pygame.draw.circle(s1, (255, 255, 255), (w // 2 + 4, h // 2 - 3), 3)
+        pygame.draw.circle(s1, (220, 0, 0), (w // 2 - 4, h // 2 - 3), 1)
+        pygame.draw.circle(s1, (220, 0, 0), (w // 2 + 4, h // 2 - 3), 1)
+
+        s2 = pygame.Surface((w, h))
+        s2.fill((90, 65, 40))
+        pygame.draw.rect(s2, (25, 18, 15), (2, 2, w - 4, h - 4), 2)
+        corr_sc = pygame.transform.scale(p_corr, (w - 8, h - 8))
+        s2.blit(corr_sc, (4, 4))
+
+        s3 = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.line(s3, (40, 20, 20), (8, 6), (56, 34), 2)
+        pygame.draw.line(s3, (40, 20, 20), (14, 32), (50, 10), 2)
+        pygame.draw.line(s3, (50, 15, 15), (28, 4), (36, 36), 1)
+        return [s0, s1, s2, s3]
+
+    # Fallback procedural
     s0 = pygame.Surface((w, h))
     s0.fill((110, 80, 50))
     pygame.draw.rect(s0, (50, 40, 35), (4, 4, w - 8, h - 8))
@@ -408,7 +441,6 @@ def create_painting_surfaces():
     pygame.draw.rect(s0, (30, 25, 20), (w // 2 - 5, h // 2 - 3, 2, 2))
     pygame.draw.rect(s0, (30, 25, 20), (w // 2 + 1, h // 2 - 3, 2, 2))
 
-    # State 1: Eyes shifted facing player
     s1 = pygame.Surface((w, h))
     s1.fill((100, 70, 45))
     pygame.draw.rect(s1, (45, 30, 30), (4, 4, w - 8, h - 8))
@@ -419,18 +451,15 @@ def create_painting_surfaces():
     pygame.draw.circle(s1, (180, 0, 0), (w // 2 - 4, h // 2 - 3), 1)
     pygame.draw.circle(s1, (180, 0, 0), (w // 2 + 4, h // 2 - 3), 1)
 
-    # State 2: Face replaced by dark blank oval void
     s2 = pygame.Surface((w, h))
     s2.fill((70, 45, 30))
     pygame.draw.rect(s2, (20, 15, 20), (4, 4, w - 8, h - 8))
     pygame.draw.ellipse(s2, (5, 5, 8), (w // 2 - 10, h // 2 - 12, 20, 24))
 
-    # State 3: Scratched wall
     s3 = pygame.Surface((w, h), pygame.SRCALPHA)
     pygame.draw.line(s3, (40, 20, 20), (8, 6), (56, 34), 2)
     pygame.draw.line(s3, (40, 20, 20), (14, 32), (50, 10), 2)
     pygame.draw.line(s3, (50, 15, 15), (28, 4), (36, 36), 1)
-
     return [s0, s1, s2, s3]
 
 
@@ -454,27 +483,56 @@ class InteractiveDoor:
             return None
         return self.closed_rect
 
-    def draw(self, surface, cam_x, cam_y):
+    def draw(self, surface, cam_x, cam_y, assets=None):
+        if assets is None:
+            try:
+                assets = AssetManager.get_instance()
+            except Exception:
+                assets = None
+
         sx = self.closed_rect.x - cam_x
         sy = self.closed_rect.y - cam_y
         w, h = self.closed_rect.width, self.closed_rect.height
 
+        # Visual jambs
+        pygame.draw.rect(surface, (35, 25, 20), (sx - 3, sy, 4, h))
+        pygame.draw.rect(surface, (35, 25, 20), (sx + w - 1, sy, 4, h))
+
         if self.is_exit:
-            color = (65, 85, 65) if self.is_open else (90, 45, 45)
-            pygame.draw.rect(surface, color, (sx, sy, w, h))
-            pygame.draw.rect(surface, (25, 25, 25), (sx, sy, w, h), 2)
-            pygame.draw.circle(surface, (220, 190, 80), (sx + w // 2, sy + h // 2), 4)
+            exit_spr = assets.sprites.get('exit_door') if assets else None
+            if exit_spr:
+                scaled_exit = pygame.transform.scale(exit_spr, (w, max(h, 44)))
+                surface.blit(scaled_exit, (sx, sy - 8))
+            else:
+                color = (65, 85, 65) if self.is_open else (90, 45, 45)
+                pygame.draw.rect(surface, color, (sx, sy, w, h))
+                pygame.draw.rect(surface, (25, 25, 25), (sx, sy, w, h), 2)
+                pygame.draw.circle(surface, (220, 190, 80), (sx + w // 2, sy + h // 2), 4)
+
+            sign = assets.sprites.get('exit_sign_red') if assets else None
+            if sign:
+                surface.blit(sign, (sx + (w - sign.get_width()) // 2, sy - 24))
         else:
             if not self.is_open:
-                pygame.draw.rect(surface, (110, 80, 55), (sx, sy, w, h))
-                pygame.draw.rect(surface, (55, 38, 25), (sx, sy, w, h), 2)
-                knob_x = sx + (w - 8 if w > h else w // 2)
-                knob_y = sy + (h // 2 if w > h else h - 8)
-                pygame.draw.circle(surface, (215, 185, 75), (knob_x, knob_y), 3)
+                door_spr = assets.sprites.get('door_wood') if assets else None
+                if door_spr:
+                    scaled_d = pygame.transform.scale(door_spr, (w, max(h, 28)))
+                    surface.blit(scaled_d, (sx, sy))
+                else:
+                    pygame.draw.rect(surface, (110, 80, 55), (sx, sy, w, h))
+                    pygame.draw.rect(surface, (55, 38, 25), (sx, sy, w, h), 2)
+                    knob_x = sx + (w - 8 if w > h else w // 2)
+                    knob_y = sy + (h // 2 if w > h else h - 8)
+                    pygame.draw.circle(surface, (215, 185, 75), (knob_x, knob_y), 3)
             else:
-                swung_rect = (sx - 4, sy - h, 8, h + 4) if w > h else (sx - w, sy - 4, w + 4, 8)
-                pygame.draw.rect(surface, (95, 68, 44), swung_rect)
-                pygame.draw.rect(surface, (45, 30, 20), swung_rect, 1)
+                open_spr = assets.sprites.get('door_dark_open') if assets else None
+                if open_spr:
+                    scaled_o = pygame.transform.scale(open_spr, (24, max(h, 28)))
+                    surface.blit(scaled_o, (sx - 18, sy - 6))
+                else:
+                    swung_rect = (sx - 4, sy - h, 8, h + 4) if w > h else (sx - w, sy - 4, w + 4, 8)
+                    pygame.draw.rect(surface, (95, 68, 44), swung_rect)
+                    pygame.draw.rect(surface, (45, 30, 20), swung_rect, 1)
 
 
 # ==============================================================================
@@ -483,7 +541,9 @@ class InteractiveDoor:
 class GameRoom:
     """Manages rooms, searchable furniture, dynamic objects, and items."""
     def __init__(self):
+        self.assets = AssetManager.get_instance()
         self.house_rect = pygame.Rect(100, 80, 1300, 880)
+        self._build_floor_cache()
 
         # Static Walls
         self.static_walls = [
@@ -615,6 +675,32 @@ class GameRoom:
         self.fake_door_visible = False
         self.bed_lump = False
 
+    def _build_floor_cache(self):
+        self.floor_cache = pygame.Surface((self.house_rect.width, self.house_rect.height))
+        self.floor_cache.fill((30, 24, 20))
+
+        def tile_box(tex, rx, ry, rw, rh):
+            if not tex:
+                return
+            tw, th = tex.get_size()
+            for y in range(0, rh, th):
+                for x in range(0, rw, tw):
+                    sub_w = min(tw, rw - x)
+                    sub_h = min(th, rh - y)
+                    self.floor_cache.blit(tex, (rx + x, ry + y), (0, 0, sub_w, sub_h))
+
+        # Relative to house_rect.topleft (100, 80)
+        # Bedroom: top-left (0, 0, 590, 360)
+        tile_box(self.assets.floors.get('bedroom'), 0, 0, 590, 360)
+        # Study / Living: top-right (590, 0, 710, 360)
+        tile_box(self.assets.floors.get('living'), 590, 0, 710, 360)
+        # Hallway: middle (0, 360, 1300, 160)
+        tile_box(self.assets.floors.get('corridor'), 0, 360, 1300, 160)
+        # Storage: bottom-left (0, 520, 590, 360)
+        tile_box(self.assets.floors.get('storage'), 0, 520, 590, 360)
+        # Foyer: bottom-right (590, 520, 710, 360)
+        tile_box(self.assets.floors.get('living_dark'), 590, 520, 710, 360)
+
     def get_solid_colliders(self):
         colliders = list(self.static_walls)
         for d in self.doors:
@@ -634,29 +720,59 @@ class GameRoom:
         bx_off = math.sin(instability_breathing) * 1.5 if instability_breathing > 0 else 0
         by_off = math.cos(instability_breathing) * 1.5 if instability_breathing > 0 else 0
 
-        # Floorboards
-        floor_color_1 = (40, 32, 26)
-        floor_color_2 = (35, 28, 22)
-        for y in range(self.house_rect.top, self.house_rect.bottom, 24):
-            sy = y - cam_y
-            if -30 <= sy <= SCREEN_HEIGHT + 30:
-                color = floor_color_1 if ((y // 24) % 2 == 0) else floor_color_2
-                sx = self.house_rect.left - cam_x
-                pygame.draw.rect(surface, color, (sx, sy, self.house_rect.width, 24))
-                pygame.draw.line(surface, (24, 18, 14), (sx, sy), (sx + self.house_rect.width, sy), 1)
+        # 1. Floorboards from cache
+        if hasattr(self, 'floor_cache'):
+            surface.blit(self.floor_cache, (self.house_rect.x - cam_x, self.house_rect.y - cam_y))
+        else:
+            floor_color_1 = (40, 32, 26)
+            floor_color_2 = (35, 28, 22)
+            for y in range(self.house_rect.top, self.house_rect.bottom, 24):
+                sy = y - cam_y
+                if -30 <= sy <= SCREEN_HEIGHT + 30:
+                    color = floor_color_1 if ((y // 24) % 2 == 0) else floor_color_2
+                    sx = self.house_rect.left - cam_x
+                    pygame.draw.rect(surface, color, (sx, sy, self.house_rect.width, 24))
 
-        # Static Walls
+        # 2. Subtle Floor Decals, Blood & Clutter
+        blood_scratch = self.assets.sprites.get('blood_scratches')
+        if blood_scratch:
+            surface.blit(blood_scratch, (280 - cam_x, 620 - cam_y))
+            surface.blit(blood_scratch, (630 - cam_x, 780 - cam_y))
+
+        blood_hand = self.assets.sprites.get('blood_handprint')
+        if blood_hand:
+            surface.blit(blood_hand, (230 - cam_x, 520 - cam_y))
+            surface.blit(blood_hand, (530 - cam_x, 260 - cam_y))
+
+        blood_drip = self.assets.sprites.get('blood_drips')
+        if blood_drip:
+            surface.blit(blood_drip, (720 - cam_x, 435 - cam_y))
+
+        doormat = self.assets.sprites.get('entry_doormat')
+        if doormat:
+            surface.blit(doormat, (985 - cam_x, 915 - cam_y))
+
+        # 3. Static Walls
+        brick_tile = self.assets.walls.get('brick')
+        tw, th = brick_tile.get_size() if brick_tile else (32, 32)
         for w in self.static_walls:
             sx = w.x - cam_x + bx_off
             sy = w.y - cam_y + by_off
-            pygame.draw.rect(surface, (55, 48, 44), (sx, sy, w.w, w.h))
-            pygame.draw.rect(surface, (30, 25, 22), (sx, sy, w.w, w.h), 2)
+            if brick_tile:
+                for y in range(0, w.h, th):
+                    for x in range(0, w.w, tw):
+                        sub_w = min(tw, w.w - x)
+                        sub_h = min(th, w.h - y)
+                        surface.blit(brick_tile, (sx + x, sy + y), (0, 0, sub_w, sub_h))
+            else:
+                pygame.draw.rect(surface, (55, 48, 44), (sx, sy, w.w, w.h))
+            pygame.draw.rect(surface, (25, 18, 14), (sx, sy, w.w, w.h), 2)
 
-        # Interactive Doors
+        # 4. Interactive Doors
         for d in self.doors:
-            d.draw(surface, cam_x, cam_y)
+            d.draw(surface, cam_x, cam_y, self.assets)
 
-        # Fake Door Wrongness
+        # 5. Fake Door Wrongness
         if self.fake_door_visible:
             fdx = self.fake_door_rect.x - cam_x
             fdy = self.fake_door_rect.y - cam_y
@@ -664,7 +780,7 @@ class GameRoom:
             pygame.draw.rect(surface, (30, 15, 15), (fdx, fdy, self.fake_door_rect.w, self.fake_door_rect.h), 2)
             pygame.draw.circle(surface, (180, 150, 60), (fdx + 10, fdy + self.fake_door_rect.h // 2), 3)
 
-        # Graffiti Lines
+        # 6. Graffiti Lines
         for g in self.graffiti_lines:
             if g["visible"]:
                 gx = g["pos"][0] - cam_x
@@ -674,52 +790,55 @@ class GameRoom:
 
         # --- BEDROOM ---
         bx, by = self.bed_rect.x - cam_x, self.bed_rect.y - cam_y
-        pygame.draw.rect(surface, (75, 52, 38), (bx, by, self.bed_rect.w, self.bed_rect.h))
-        pygame.draw.rect(surface, (135, 125, 115), (bx + 6, by + 6, self.bed_rect.w - 12, self.bed_rect.h - 12))
-        pygame.draw.rect(surface, (175, 170, 160), (bx + 10, by + 10, self.bed_rect.w - 20, 32))
-        pygame.draw.rect(surface, (90, 70, 60), (bx + 6, by + 65, self.bed_rect.w - 12, self.bed_rect.h - 71))
-        if self.bed_lump:
-            pygame.draw.ellipse(surface, (65, 48, 42), (bx + 20, by + 80, self.bed_rect.w - 40, 55))
-            pygame.draw.ellipse(surface, (110, 85, 75), (bx + 25, by + 85, self.bed_rect.w - 50, 45), 2)
+        bed_spr = self.assets.sprites.get('bed_unmade' if self.bed_lump else 'bed_brown')
+        if bed_spr:
+            scaled_bed = pygame.transform.scale(bed_spr, (self.bed_rect.w, self.bed_rect.h))
+            surface.blit(scaled_bed, (bx, by))
+        else:
+            pygame.draw.rect(surface, (75, 52, 38), (bx, by, self.bed_rect.w, self.bed_rect.h))
+            pygame.draw.rect(surface, (135, 125, 115), (bx + 6, by + 6, self.bed_rect.w - 12, self.bed_rect.h - 12))
 
         # Nightstand
         nx, ny = self.nightstand_rect.x - cam_x, self.nightstand_rect.y - cam_y
-        pygame.draw.rect(surface, (85, 60, 42), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h))
-        pygame.draw.rect(surface, (45, 32, 22), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h), 2)
-        # Drawer front with a brass knob (clearly looks openable)
+        pygame.draw.rect(surface, (65, 45, 32), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h))
+        pygame.draw.rect(surface, (35, 22, 16), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h), 2)
+        clock_spr = self.assets.sprites.get('alarm_clock')
+        if clock_spr:
+            surface.blit(clock_spr, (nx + 6, ny + 8))
         pygame.draw.rect(surface, (62, 44, 30), (nx + 4, ny + 24, self.nightstand_rect.w - 8, 16))
         pygame.draw.rect(surface, (35, 24, 16), (nx + 4, ny + 24, self.nightstand_rect.w - 8, 16), 1)
         pygame.draw.circle(surface, (215, 185, 75), (nx + self.nightstand_rect.w // 2, ny + 32), 3)
         if self.nightstand_searched:
-            pygame.draw.rect(surface, (8, 5, 3), (nx + 4, ny + 38, self.nightstand_rect.w - 8, 5))  # drawer left ajar
+            pygame.draw.rect(surface, (8, 5, 3), (nx + 4, ny + 38, self.nightstand_rect.w - 8, 5))
 
         # Note on Nightstand (if unread)
         if not self.note_read:
-            ntx, nty = self.note_rect.x - cam_x, self.note_rect.y - cam_y
-            pygame.draw.rect(surface, (230, 225, 210), (ntx, nty, self.note_rect.w, self.note_rect.h))
-            pygame.draw.rect(surface, (180, 170, 150), (ntx, nty, self.note_rect.w, self.note_rect.h), 1)
-            for i in range(3):
-                pygame.draw.line(surface, (90, 80, 70), (ntx + 3, nty + 4 + i * 5), (ntx + self.note_rect.w - 3, nty + 4 + i * 5), 1)
+            note_spr = self.assets.sprites.get('note_paper')
+            if note_spr:
+                surface.blit(note_spr, (self.note_rect.x - cam_x, self.note_rect.y - cam_y))
+            else:
+                ntx, nty = self.note_rect.x - cam_x, self.note_rect.y - cam_y
+                pygame.draw.rect(surface, (230, 225, 210), (ntx, nty, self.note_rect.w, self.note_rect.h))
 
         # Wardrobe
         wx, wy = self.wardrobe_rect.x - cam_x, self.wardrobe_rect.y - cam_y
-        pygame.draw.rect(surface, (68, 44, 28), (wx, wy, self.wardrobe_rect.w, self.wardrobe_rect.h))
-        pygame.draw.rect(surface, (38, 24, 15), (wx, wy, self.wardrobe_rect.w, self.wardrobe_rect.h), 2)
-        pygame.draw.line(surface, (20, 10, 8), (wx + self.wardrobe_rect.w // 2, wy + 4),
-                         (wx + self.wardrobe_rect.w // 2, wy + self.wardrobe_rect.h - 4), 2)
-        for kx_off in (-7, 7):
-            pygame.draw.circle(surface, (215, 185, 75), (wx + self.wardrobe_rect.w // 2 + kx_off, wy + 78), 3)
+        wardrobe_key = 'wardrobe_eyes' if (self.wardrobe_searched or self.has_key) else 'wardrobe_closed'
+        wardrobe_spr = self.assets.sprites.get(wardrobe_key)
+        if wardrobe_spr:
+            scaled_w = pygame.transform.scale(wardrobe_spr, (self.wardrobe_rect.w, self.wardrobe_rect.h))
+            surface.blit(scaled_w, (wx, wy))
+        else:
+            pygame.draw.rect(surface, (68, 44, 28), (wx, wy, self.wardrobe_rect.w, self.wardrobe_rect.h))
 
         # Moving Chair
         cx, cy = self.chair_rect.x - cam_x, self.chair_rect.y - cam_y
-        pygame.draw.rect(surface, (105, 72, 48), (cx, cy, self.chair_rect.w, self.chair_rect.h))
-        pygame.draw.rect(surface, (55, 38, 24), (cx, cy, self.chair_rect.w, self.chair_rect.h), 2)
-        if self.chair_stage == 2:
-            pygame.draw.rect(surface, (75, 48, 28), (cx + self.chair_rect.w - 6, cy + 2, 4, self.chair_rect.h - 4))
-        elif self.chair_stage == 3:
-            pygame.draw.rect(surface, (75, 48, 28), (cx + 2, cy + 2, self.chair_rect.w - 4, 4))
+        chair_key = 'dining_chair_fallen' if self.chair_stage >= 3 else 'dining_chair'
+        chair_spr = self.assets.sprites.get(chair_key)
+        if chair_spr:
+            scaled_chair = pygame.transform.scale(chair_spr, (self.chair_rect.w, self.chair_rect.h))
+            surface.blit(scaled_chair, (cx, cy))
         else:
-            pygame.draw.rect(surface, (75, 48, 28), (cx + 2, cy + self.chair_rect.h - 6, self.chair_rect.w - 4, 4))
+            pygame.draw.rect(surface, (105, 72, 48), (cx, cy, self.chair_rect.w, self.chair_rect.h))
 
         if self.shoes_visible:
             sx, sy = self.shoes_pos[0] - cam_x, self.shoes_pos[1] - cam_y
@@ -728,11 +847,12 @@ class GameRoom:
 
         # --- STUDY ---
         dx, dy = self.study_desk_rect.x - cam_x, self.study_desk_rect.y - cam_y
-        pygame.draw.rect(surface, (95, 68, 46), (dx, dy, self.study_desk_rect.w, self.study_desk_rect.h))
-        pygame.draw.rect(surface, (55, 38, 26), (dx, dy, self.study_desk_rect.w, self.study_desk_rect.h), 2)
-        pygame.draw.rect(surface, (195, 190, 175), (dx + 15, dy + 15, 24, 28))
-        pygame.draw.rect(surface, (185, 180, 165), (dx + 48, dy + 20, 28, 24))
-        # Drawer fronts along the bottom edge, each with a knob
+        pygame.draw.rect(surface, (85, 58, 38), (dx, dy, self.study_desk_rect.w, self.study_desk_rect.h))
+        pygame.draw.rect(surface, (45, 28, 18), (dx, dy, self.study_desk_rect.w, self.study_desk_rect.h), 2)
+        note_spr = self.assets.sprites.get('note_paper')
+        if note_spr:
+            surface.blit(note_spr, (dx + 15, dy + 15))
+            surface.blit(note_spr, (dx + 48, dy + 20))
         for i in range(2):
             drx = dx + 12 + i * 76
             pygame.draw.rect(surface, (70, 49, 33), (drx, dy + self.study_desk_rect.h - 22, 60, 17))
@@ -740,83 +860,126 @@ class GameRoom:
             pygame.draw.circle(surface, (215, 185, 75), (drx + 30, dy + self.study_desk_rect.h - 14), 3)
 
         if self.cup_visible:
-            cpx, cpy = self.cup_pos[0] - cam_x, self.cup_pos[1] - cam_y
-            pygame.draw.circle(surface, (210, 200, 190), (int(cpx), int(cpy)), 5)
-            pygame.draw.circle(surface, (60, 45, 35), (int(cpx), int(cpy)), 3)
+            cup_spr = self.assets.sprites.get('mug_blue')
+            if cup_spr:
+                surface.blit(cup_spr, (self.cup_pos[0] - cam_x - 8, self.cup_pos[1] - cam_y - 8))
+            else:
+                cpx, cpy = self.cup_pos[0] - cam_x, self.cup_pos[1] - cam_y
+                pygame.draw.circle(surface, (210, 200, 190), (int(cpx), int(cpy)), 5)
 
         # Bookshelves
+        book_spr = self.assets.sprites.get('bookshelf')
         for b in [self.bookshelf_1, self.bookshelf_2]:
             bx, by = b.x - cam_x, b.y - cam_y
-            pygame.draw.rect(surface, (78, 52, 34), (bx, by, b.w, b.h))
-            pygame.draw.rect(surface, (45, 30, 20), (bx, by, b.w, b.h), 2)
-            for i in range(5):
-                book_y = by + 4
-                book_color = (140 + i * 15, 60 + i * 10, 40)
-                if b is self.bookshelf_1 and i == 2:
-                    # The odd one out: sticks out of the shelf (looks pulled-out / suspicious)
-                    book_y += 12 if self.bookshelf_searched else 7
-                    book_color = (95, 85, 40) if self.bookshelf_searched else (185, 150, 55)
-                pygame.draw.rect(surface, book_color, (bx + 8 + i * 24, book_y, 18, b.h - 8))
+            if book_spr:
+                bw_spr = pygame.transform.scale(book_spr, (b.w, b.h))
+                surface.blit(bw_spr, (bx, by))
+            else:
+                pygame.draw.rect(surface, (78, 52, 34), (bx, by, b.w, b.h))
+                pygame.draw.rect(surface, (45, 30, 20), (bx, by, b.w, b.h), 2)
+            if b is self.bookshelf_1:
+                odd_color = (95, 85, 40) if self.bookshelf_searched else (185, 150, 55)
+                odd_y = by + (12 if self.bookshelf_searched else 7)
+                pygame.draw.rect(surface, odd_color, (bx + 8 + 2 * 24, odd_y, 18, b.h - 8))
 
         stx, sty = self.study_table.x - cam_x, self.study_table.y - cam_y
-        pygame.draw.rect(surface, (88, 62, 42), (stx, sty, self.study_table.w, self.study_table.h))
+        ct_spr = self.assets.sprites.get('coffee_table')
+        if ct_spr:
+            scaled_ct = pygame.transform.scale(ct_spr, (self.study_table.w, self.study_table.h))
+            surface.blit(scaled_ct, (stx, sty))
+        else:
+            pygame.draw.rect(surface, (88, 62, 42), (stx, sty, self.study_table.w, self.study_table.h))
 
         # Painting
         px, py = self.painting_rect.x - cam_x, self.painting_rect.y - cam_y
         surface.blit(self.painting_surfs[self.painting_state], (px, py))
 
         # --- STORAGE ROOM ---
+        crate_spr = self.assets.sprites.get('sheet_table')
         for crate in [self.storage_crate_1, self.storage_crate_2]:
             cx, cy = crate.x - cam_x, crate.y - cam_y
-            pygame.draw.rect(surface, (82, 60, 42), (cx, cy, crate.w, crate.h))
-            pygame.draw.rect(surface, (48, 34, 22), (cx, cy, crate.w, crate.h), 2)
-            pygame.draw.line(surface, (48, 34, 22), (cx, cy), (cx + crate.w, cy + crate.h), 2)
-            pygame.draw.rect(surface, (150, 150, 140), (cx + crate.w // 2 - 6, cy + crate.h // 2 - 3, 12, 6))  # latch
+            if crate_spr:
+                sc_crate = pygame.transform.scale(crate_spr, (crate.w, crate.h))
+                surface.blit(sc_crate, (cx, cy))
+            else:
+                pygame.draw.rect(surface, (82, 60, 42), (cx, cy, crate.w, crate.h))
             searched_flag = self.storage_crate_1_searched if crate is self.storage_crate_1 else self.storage_crate_2_searched
             if searched_flag:
-                pygame.draw.rect(surface, (14, 10, 7), (cx + 5, cy + 5, crate.w - 10, 9))  # lid pried open
+                pygame.draw.rect(surface, (14, 10, 7), (cx + 5, cy + 5, crate.w - 10, 9))
 
         sx, sy = self.storage_shelf.x - cam_x, self.storage_shelf.y - cam_y
-        pygame.draw.rect(surface, (70, 48, 32), (sx, sy, self.storage_shelf.w, self.storage_shelf.h))
+        shelf_spr = self.assets.sprites.get('kitchen_shelf')
+        if shelf_spr:
+            sc_shelf = pygame.transform.scale(shelf_spr, (self.storage_shelf.w, self.storage_shelf.h))
+            surface.blit(sc_shelf, (sx, sy))
+        else:
+            pygame.draw.rect(surface, (70, 48, 32), (sx, sy, self.storage_shelf.w, self.storage_shelf.h))
         for i in range(7):
             binder_y = sy + 5
             if i == 3:
-                binder_y += 10 if self.storage_shelf_searched else 6  # one binder sticks out
+                binder_y += 10 if self.storage_shelf_searched else 6
             binder_color = (70, 90, 120) if i % 2 == 0 else (150, 130, 95)
             pygame.draw.rect(surface, binder_color, (sx + 6 + i * 19, binder_y, 14, self.storage_shelf.h - 10))
 
+        spiderweb = self.assets.sprites.get('spiderweb')
+        if spiderweb:
+            surface.blit(spiderweb, (115 - cam_x, 615 - cam_y))
+
         # --- FOYER ---
         fx, fy = self.foyer_table.x - cam_x, self.foyer_table.y - cam_y
-        pygame.draw.rect(surface, (85, 60, 42), (fx, fy, self.foyer_table.w, self.foyer_table.h))
-        pygame.draw.rect(surface, (190, 185, 170), (fx + 9, fy + 14, 30, 22))  # visitor log
+        shoe_cab = self.assets.sprites.get('shoe_cabinet')
+        if shoe_cab:
+            sc_cab = pygame.transform.scale(shoe_cab, (self.foyer_table.w, self.foyer_table.h))
+            surface.blit(sc_cab, (fx, fy))
+        else:
+            pygame.draw.rect(surface, (85, 60, 42), (fx, fy, self.foyer_table.w, self.foyer_table.h))
+        pygame.draw.rect(surface, (190, 185, 170), (fx + 9, fy + 14, 30, 22))
         pygame.draw.line(surface, (110, 100, 90), (fx + 13, fy + 22), (fx + 35, fy + 22), 1)
+
         fx, fy = self.foyer_shelf.x - cam_x, self.foyer_shelf.y - cam_y
-        pygame.draw.rect(surface, (75, 50, 35), (fx, fy, self.foyer_shelf.w, self.foyer_shelf.h))
+        disp_cab = self.assets.sprites.get('display_cabinet')
+        if disp_cab:
+            sc_disp = pygame.transform.scale(disp_cab, (self.foyer_shelf.w, self.foyer_shelf.h))
+            surface.blit(sc_disp, (fx, fy))
+        else:
+            pygame.draw.rect(surface, (75, 50, 35), (fx, fy, self.foyer_shelf.w, self.foyer_shelf.h))
 
         # --- REVEALED KEY (Inside Bookshelf 1) ---
         if self.key_revealed and not self.key_collected:
             kx = self.bookshelf_1.centerx - cam_x
             ky = self.bookshelf_1.centery - cam_y
-            pulse = math.sin(pygame.time.get_ticks() / 240.0) * 3
-            pygame.draw.circle(surface, (255, 230, 80), (int(kx), int(ky - 3)), int(6 + pulse), 1)
-            pygame.draw.circle(surface, (255, 215, 60), (int(kx), int(ky - 3)), 4)
-            pygame.draw.rect(surface, (255, 215, 60), (int(kx - 1), int(ky - 1), 3, 9))
+            key_spr = self.assets.sprites.get('key_item')
+            if key_spr:
+                surface.blit(key_spr, (kx - key_spr.get_width() // 2, ky - key_spr.get_height() // 2))
+            else:
+                pulse = math.sin(pygame.time.get_ticks() / 240.0) * 3
+                pygame.draw.circle(surface, (255, 230, 80), (int(kx), int(ky - 3)), int(6 + pulse), 1)
+                pygame.draw.circle(surface, (255, 215, 60), (int(kx), int(ky - 3)), 4)
+                pygame.draw.rect(surface, (255, 215, 60), (int(kx - 1), int(ky - 1), 3, 9))
 
         # --- FALSE KEY ---
         if self.false_key_visible and not self.false_key_used:
             fkx = self.false_key_rect.centerx - cam_x
             fky = self.false_key_rect.centery - cam_y
-            pygame.draw.circle(surface, (220, 200, 100), (int(fkx), int(fky - 3)), 4)
-            pygame.draw.rect(surface, (220, 200, 100), (int(fkx - 1), int(fky - 1), 3, 8))
+            key_spr = self.assets.sprites.get('key_item')
+            if key_spr:
+                surface.blit(key_spr, (fkx - key_spr.get_width() // 2, fky - key_spr.get_height() // 2))
+            else:
+                pygame.draw.circle(surface, (220, 200, 100), (int(fkx), int(fky - 3)), 4)
+                pygame.draw.rect(surface, (220, 200, 100), (int(fkx - 1), int(fky - 1), 3, 8))
 
         # --- BATTERIES (if revealed and uncollected) ---
         for bat in self.batteries:
             if bat["revealed"] and not bat["collected"]:
                 r = bat["rect"]
                 bx, by = r.x - cam_x, r.y - cam_y
-                pygame.draw.rect(surface, (50, 185, 100), (bx, by + 2, r.w, r.h - 4))
-                pygame.draw.rect(surface, (220, 220, 220), (bx + r.w - 2, by + r.h // 2 - 2, 3, 4))
-                pygame.draw.rect(surface, (20, 40, 20), (bx, by + 2, r.w, r.h - 4), 1)
+                bat_spr = self.assets.sprites.get('battery_item')
+                if bat_spr:
+                    surface.blit(bat_spr, (bx, by))
+                else:
+                    pygame.draw.rect(surface, (50, 185, 100), (bx, by + 2, r.w, r.h - 4))
+                    pygame.draw.rect(surface, (220, 220, 220), (bx + r.w - 2, by + r.h // 2 - 2, 3, 4))
+                    pygame.draw.rect(surface, (20, 40, 20), (bx, by + 2, r.w, r.h - 4), 1)
 
 
 # ==============================================================================
