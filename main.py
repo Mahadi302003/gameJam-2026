@@ -25,6 +25,7 @@ import struct
 import wave
 import pygame
 from assets import AssetManager
+from sound import AudioManager
 
 # ==============================================================================
 # 1. GAMEPLAY CONFIGURATION & DIFFICULTY TUNING
@@ -257,70 +258,7 @@ def generate_sound(name):
     return None
 
 
-class AudioManager:
-    """Manages audio loading from disk with procedural fallback."""
-    def __init__(self):
-        self.sounds = {}
-        sound_names = [
-            "drone", "whisper", "drawer_open", "click", "footstep", "pickup_battery",
-            "pickup_key", "creature_move", "door_open", "heartbeat", "jumpscare"
-        ]
-        sound_dir = os.path.join("assets", "sounds")
-
-        for name in sound_names:
-            sound_obj = None
-            for ext in [".wav", ".ogg", ".mp3"]:
-                path = os.path.join(sound_dir, f"{name}{ext}")
-                if os.path.exists(path) and AUDIO_INITIALIZED:
-                    try:
-                        sound_obj = pygame.mixer.Sound(path)
-                        break
-                    except Exception:
-                        sound_obj = None
-
-            if sound_obj is None and AUDIO_INITIALIZED:
-                sound_obj = generate_sound(name)
-
-            self.sounds[name] = sound_obj
-
-        self.drone_channel = None
-
-    def start_drone(self):
-        if not AUDIO_INITIALIZED:
-            return
-        snd = self.sounds.get("drone")
-        if snd:
-            try:
-                self.drone_channel = snd.play(loops=-1)
-                if self.drone_channel:
-                    self.drone_channel.set_volume(0.25)
-            except Exception:
-                pass
-
-    def set_drone_volume(self, vol):
-        if self.drone_channel:
-            try:
-                self.drone_channel.set_volume(max(0.0, min(1.0, vol)))
-            except Exception:
-                pass
-
-    def stop_drone(self):
-        if self.drone_channel:
-            try:
-                self.drone_channel.stop()
-            except Exception:
-                pass
-
-    def play(self, name, volume=1.0):
-        if not AUDIO_INITIALIZED:
-            return
-        snd = self.sounds.get(name)
-        if snd:
-            try:
-                snd.set_volume(volume)
-                snd.play()
-            except Exception:
-                pass
+# AudioManager is imported from sound.py at the top of main.py
 
 
 # ==============================================================================
