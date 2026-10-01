@@ -1717,6 +1717,7 @@ class GameEngine:
 
         vol = 0.20 + (self.instability / 100.0) * 0.40
         self.audio.set_drone_volume(vol)
+        self.audio.set_tension(self.instability / 100.0)
         self.director.update(dt)
 
         if random.random() < (self.instability / 100.0) * 0.015:
@@ -1764,7 +1765,8 @@ class GameEngine:
                 self.creature.unseen_timer = 0.0
                 self.creature.update_position((self.player_x, self.player_y), is_aggro)
                 self.flicker_frames = 2
-                self.audio.play("creature_move", 0.6)
+                cdist = math.hypot(self.player_x - self.creature.pos[0], self.player_y - self.creature.pos[1])
+                self.audio.play_at_distance("creature_move", cdist, max_distance=800.0, volume=0.8)
 
         # Danger only in total darkness when battery hits 0
         if not self.flashlight_on:
@@ -1776,11 +1778,11 @@ class GameEngine:
         """Only triggered if caught in pitch darkness when battery reaches 0%."""
         self.state = STATE_JUMPSCARE
         self.state_timer = 0.0
-        self.audio.stop_drone()
-        self.audio.play("jumpscare", 1.0)
+        self.audio.duck_for_jumpscare()
         self.shake_amount = 7  # Significantly reduced screen shake
 
     def update(self, dt):
+        self.audio.update()
         target_cam_x = int(self.player_x - SCREEN_WIDTH / 2)
         target_cam_y = int(self.player_y - SCREEN_HEIGHT / 2)
         self.cam_x = max(0, min(WORLD_WIDTH - SCREEN_WIDTH, target_cam_x))
