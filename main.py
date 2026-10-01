@@ -823,19 +823,26 @@ class GameRoom:
 # 6. CREATURE CONTROLLER (Stalking & Dynamic Poses)
 # ==============================================================================
 class Creature:
-    def __init__(self):
+    """The creature freezes in the flashlight beam, and repositions across the house when unseen."""
+    def __init__(self, positions=None):
         self.poses = create_creature_poses()
         self.pose_index = 0
         self.width = 40
         self.height = 52
 
-        self.positions = [
-            (580, 240),   # Stage 0: FAR (Bedroom wardrobe shadow)
-            (520, 520),   # Stage 1: MID (Central hallway)
-            (880, 260),   # Stage 2: CLOSE (Study doorway)
-            (360, 780),   # Stage 3: VERY_CLOSE (Storage room shadows)
-            (980, 780),   # Stage 4: BEHIND_PLAYER (Exit Foyer)
-        ]
+        # Predefined stalking positions across the house
+        if isinstance(positions, dict):
+            self.positions = list(positions.values())
+        elif positions:
+            self.positions = list(positions)
+        else:
+            self.positions = [
+                (580, 240),   # Stage 0: FAR (Bedroom wardrobe shadow)
+                (520, 520),   # Stage 1: MID (Central hallway)
+                (880, 260),   # Stage 2: CLOSE (Study doorway)
+                (360, 780),   # Stage 3: VERY_CLOSE (Storage room shadows)
+                (980, 780),   # Stage 4: BEHIND_PLAYER (Exit Foyer)
+            ]
         self.stage = 0
         self.pos = list(self.positions[0])
         self.rect = pygame.Rect(self.pos[0] - self.width // 2, self.pos[1] - self.height // 2, self.width, self.height)
@@ -1090,6 +1097,7 @@ class GameEngine:
         self.state = STATE_MENU
         self.state_timer = 0.0
         self.intro_timer = 0.0
+
 
         # Player spawn in Central Hallway
         self.player_x = 520.0
