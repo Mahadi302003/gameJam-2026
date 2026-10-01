@@ -5,63 +5,83 @@
 
 ---
 
-## 🎮 Flow & How to Play
-
-### Game Flow
-1. **Title Menu** — Press <kbd>SPACE</kbd> or <kbd>Left-Click</kbd> to begin.
-2. **Prologue Story Screen** — Atmospheric narrative fade-in describing the protagonist's slipping mental state, establishing the psychological horror. Press <kbd>SPACE</kbd> to wake up into the game.
-3. **Gameplay** — Wake up in the **Central Hallway** with doors open, ready to roam and search the interconnected rooms.
-
-### Controls
-* **W, A, S, D** — Move protagonist
-* **Mouse Cursor** — Aim flashlight beam
-* **Left-Click / Right-Click / F** — **Toggle Flashlight ON / OFF** (Conserve battery, but beware of what moves in the dark!)
-* **E** — **Interact:** Pick up Key & Batteries, Open/Close Doors, Unlock Main Exit Door
-* **R** — Restart game at any time
-* **ESC** — Quit
+## 🎮 Objective & How to Play
 
 ### Objective
-1. Start in the **Central Hallway** outside the rooms.
-2. The room doors are **open and unlocked**, allowing you to immediately enter and explore:
-   * **The Study & Gallery (Top-Right):** Look for the glowing golden **Key** resting on the large study desk. Don't miss the changing portrait on the wall.
-   * **The Bedroom (Top-Left):** Contains **Battery 1** on the nightstand, wardrobe, and the shifting chair.
-   * **The Storage Room (Bottom-Left):** Contains **Battery 2** on a supply crate and the carved wall clue: `"DON'T LET IT GO DARK."`
-   * **The Exit Foyer (Bottom-Right):** Contains **Battery 3** and the **Heavy Locked Exit Door**.
-3. Pick up the **Key** from the Study.
-4. **DON'T LOOK AWAY:** The creature freezes when caught in your flashlight beam, but moves closer whenever you turn away, turn your flashlight off, or let the darkness take over.
-5. Reach the **Heavy Main Exit Door** in the Foyer with your key and press <kbd>E</kbd> to escape... or discover what is actually happening.
+**SEARCH THE FURNITURE to find the KEY and your RESIDENT ID, then escape through the Heavy Exit Door.**
+
+* **Top-Left HUD:**
+  ```text
+  KEY: [ ]   ID: [ ]
+  FLASHLIGHT [████████░░] 82%
+  Status: ON [Click to Toggle]
+  ```
+* **Exit Door Logic:**
+  * Without items: `"THE DOOR IS LOCKED."`
+  * With Key but no ID: `"I CAN'T LEAVE WITHOUT MY ID."`
+  * With both Key + ID: The door opens, allowing you to escape and uncover the **final plot twist**!
 
 ---
 
-## 🚀 Running the Game
-
-### Option 1: Double-Click the Launcher (Easiest)
-Double-click **`run_game.bat`** in `C:\Users\gabit\Desktop\gamejam\run_game.bat`.
-
-### Option 2: Run in PyCharm
-Right-click on **`main.py`** and select **Run 'main'** (or press `Shift + F10`).
-
-### Option 3: Terminal / Command Prompt
-```bash
-cd C:\Users\gabit\Desktop\gamejam
-python main.py
-```
+## 🔍 Searchable Furniture (Items are no longer in plain sight!)
+Items are now tucked into the environment, requiring exploration:
+1. **The Study Bookshelf:** Press <kbd>E</kbd> to search the shelves. You discover a hollow book hiding the **Brass Key**!
+2. **The Storage Shelf:** Press <kbd>E</kbd> to search the metal shelf. You uncover the **Resident ID Card** tucked behind medical binders!
+3. **The Bedroom Nightstand:**
+   * On top: The **Night Staff Note** (`[E] Read Note`).
+   * Drawer: Search the drawer to find **Battery 1**!
+4. **The Wooden Storage Crate:** Press <kbd>E</kbd> to search the crate and uncover **Battery 2**!
+5. **The Study Desk & Wardrobe:** Interactive searchable furniture revealing discarded patient papers and scratched wood.
 
 ---
 
-## ⚙️ Difficulty & Balancing Settings
+## 🔦 Flashlight & Lighting
+* **Narrow Focused Beam:** The flashlight beam has been tightened to a claustrophobic **54° cone** (350px reach).
+* **Ambient Halo:** Even when the flashlight is clicked **OFF**, a very small, soft halo (~22px) remains around your feet so you can still faintly see where you are stepping, while the rest of the room is enveloped in pitch darkness.
 
-All core gameplay and balance parameters are located right at the top of [main.py](file:///c:/Users/gabit/Desktop/gamejam/main.py#L26-L50) for easy tuning:
+---
 
-```python
-PLAYER_SPEED = 3.3           # WASD speed in pixels per frame
-FLASHLIGHT_ANGLE = 80        # Beam cone angle in degrees (70-90)
-FLASHLIGHT_RANGE = 400       # Beam reach in pixels
-FLASHLIGHT_BATTERY = 100.0   # Starting battery percentage
-BATTERY_DRAIN = 0.65         # Battery % drained per second while flashlight is ON (~155s of continuous light)
-BATTERY_REFILL = 50.0        # Battery % restored per battery pickup
-CREATURE_MOVE_DELAY = 1.8    # Seconds outside flashlight beam before relocating
-CREATURE_AGGRO_DELAY = 1.0   # Faster relocation once key is obtained
-CREATURE_ATTACK_DIST = 46    # Proximity threshold for game over in darkness
-BLACKOUT_KILL_TIME = 4.5     # Seconds of total darkness before forced jumpscare
-```
+## 🎭 The Plot Twist Ending (No Cheap Jumpscare on Escape)
+When you gather both the **Key** and **ID Card** and open the exit door:
+1. The door unlatches and swings open with warm white light.
+2. You step through the doorway into what looks like freedom.
+3. The dark house fades away into a quiet, softly-lit hospital / care residence corridor.
+4. You look back at the room you just escaped from: the door is labeled **ROOM 4**, and it swings gently without any lock.
+5. Beside the door hangs the **Night Staff Observation Whiteboard**:
+   ```text
+   ST. ALDRIC RESIDENCE - NIGHT OBSERVATION LOG
+   RESIDENT #0412 (ROOM 4)
+   
+   "Resident reported being stalked by an entity in darkness.
+    Emptied bookshelves looking for a 'key' to escape.
+    Rearranged room chair multiple times during episode.
+    
+    DIRECTIVE: Room door must remain unlocked per hospital rules.
+    Night staff have placed a flashlight beside his bed."
+   ```
+6. The reality hits you:
+   > *"There was no creature.*  
+   > *You were running from your own shadow.*  
+   > *There was never anyone else in the room."*
+
+*(Jumpscare only occurs if you run out of battery in the dark during active gameplay!)*
+
+---
+
+## 🕹️ Controls
+* **W, A, S, D** — Move protagonist
+* **Mouse Cursor** — Aim flashlight beam
+* **Left-Click / Right-Click / F** — **Toggle Flashlight ON / OFF**
+* **E** — **Interact:** Search bookshelves/crates/drawers, pick up items, read notes, open doors
+* **R** — Full restart of all game state
+* **ESC** — Quit
+
+### 🛠️ Debug Testing Keys
+* **F1** — Toggle **Debug HUD** (shows live Instability %, Creature stage, and event log)
+* **F2** — **Force Next Instability Event** immediately
+* **F3** — **Instant Key + ID** (walk straight to the exit door to experience the plot twist ending!)
+
+---
+
+## 🚀 How to Run
+Double-click **[`run_game.bat`](file:///c:/Users/gabit/Desktop/gamejam/run_game.bat)** or run in PyCharm (<kbd>Shift</kbd> + <kbd>F10</kbd>).
