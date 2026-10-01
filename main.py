@@ -53,6 +53,13 @@ INSTABILITY_NOTE_BOOST = 15.0 # Rise when Note is read
 INSTABILITY_ID_BOOST = 20.0   # Rise when ID is found
 INSTABILITY_KEY_BOOST = 15.0  # Rise when Key is found
 
+# --- Interaction & Discoverability (tweak these if searching feels too easy/hard) ---
+INTERACT_RANGE = 46          # Max distance (px) from the EDGE of an object to interact with it
+SENSE_RADIUS = 190           # Interactable objects glint in the dark within this distance
+HINT_DELAY = 35.0            # Seconds without progress before story objects glint from far away
+HINT_SENSE_RADIUS = 620      # How far away the hint glint can be seen
+AMBIENT_SIGHT_RADIUS = 96    # Soft dim light around the player so nearby furniture is readable
+
 # Creature mechanics (Freeze in light, move when unlit)
 CREATURE_MOVE_DELAY = 1.8    # Base seconds unseen before creature relocates
 CREATURE_AGGRO_DELAY = 1.0   # Fast relocation once items are found
@@ -569,6 +576,9 @@ class GameRoom:
         # Storage Shelf (Where the ID Card is hidden behind binders!)
         self.storage_shelf = pygame.Rect(520, 820, 140, 40)
         self.storage_shelf_searched = False
+        self.storage_crate_2_searched = False
+        self.bookshelf_2_searched = False
+        self.foyer_table_searched = False
 
         # 4. Exit Foyer (Bottom-Right)
         self.foyer_table = pygame.Rect(730, 700, 50, 90)
@@ -676,6 +686,12 @@ class GameRoom:
         nx, ny = self.nightstand_rect.x - cam_x, self.nightstand_rect.y - cam_y
         pygame.draw.rect(surface, (85, 60, 42), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h))
         pygame.draw.rect(surface, (45, 32, 22), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h), 2)
+        # Drawer front with a brass knob (clearly looks openable)
+        pygame.draw.rect(surface, (62, 44, 30), (nx + 4, ny + 24, self.nightstand_rect.w - 8, 16))
+        pygame.draw.rect(surface, (35, 24, 16), (nx + 4, ny + 24, self.nightstand_rect.w - 8, 16), 1)
+        pygame.draw.circle(surface, (215, 185, 75), (nx + self.nightstand_rect.w // 2, ny + 32), 3)
+        if self.nightstand_searched:
+            pygame.draw.rect(surface, (8, 5, 3), (nx + 4, ny + 38, self.nightstand_rect.w - 8, 5))  # drawer left ajar
 
         # Note on Nightstand (if unread)
         if not self.note_read:
@@ -691,6 +707,8 @@ class GameRoom:
         pygame.draw.rect(surface, (38, 24, 15), (wx, wy, self.wardrobe_rect.w, self.wardrobe_rect.h), 2)
         pygame.draw.line(surface, (20, 10, 8), (wx + self.wardrobe_rect.w // 2, wy + 4),
                          (wx + self.wardrobe_rect.w // 2, wy + self.wardrobe_rect.h - 4), 2)
+        for kx_off in (-7, 7):
+            pygame.draw.circle(surface, (215, 185, 75), (wx + self.wardrobe_rect.w // 2 + kx_off, wy + 78), 3)
 
         # Moving Chair
         cx, cy = self.chair_rect.x - cam_x, self.chair_rect.y - cam_y
@@ -714,6 +732,12 @@ class GameRoom:
         pygame.draw.rect(surface, (55, 38, 26), (dx, dy, self.study_desk_rect.w, self.study_desk_rect.h), 2)
         pygame.draw.rect(surface, (195, 190, 175), (dx + 15, dy + 15, 24, 28))
         pygame.draw.rect(surface, (185, 180, 165), (dx + 48, dy + 20, 28, 24))
+        # Drawer fronts along the bottom edge, each with a knob
+        for i in range(2):
+            drx = dx + 12 + i * 76
+            pygame.draw.rect(surface, (70, 49, 33), (drx, dy + self.study_desk_rect.h - 22, 60, 17))
+            pygame.draw.rect(surface, (40, 27, 18), (drx, dy + self.study_desk_rect.h - 22, 60, 17), 1)
+            pygame.draw.circle(surface, (215, 185, 75), (drx + 30, dy + self.study_desk_rect.h - 14), 3)
 
         if self.cup_visible:
             cpx, cpy = self.cup_pos[0] - cam_x, self.cup_pos[1] - cam_y
@@ -726,7 +750,13 @@ class GameRoom:
             pygame.draw.rect(surface, (78, 52, 34), (bx, by, b.w, b.h))
             pygame.draw.rect(surface, (45, 30, 20), (bx, by, b.w, b.h), 2)
             for i in range(5):
-                pygame.draw.rect(surface, (140 + i * 15, 60 + i * 10, 40), (bx + 8 + i * 24, by + 4, 18, b.h - 8))
+                book_y = by + 4
+                book_color = (140 + i * 15, 60 + i * 10, 40)
+                if b is self.bookshelf_1 and i == 2:
+                    # The odd one out: sticks out of the shelf (looks pulled-out / suspicious)
+                    book_y += 12 if self.bookshelf_searched else 7
+                    book_color = (95, 85, 40) if self.bookshelf_searched else (185, 150, 55)
+                pygame.draw.rect(surface, book_color, (bx + 8 + i * 24, book_y, 18, b.h - 8))
 
         stx, sty = self.study_table.x - cam_x, self.study_table.y - cam_y
         pygame.draw.rect(surface, (88, 62, 42), (stx, sty, self.study_table.w, self.study_table.h))
@@ -741,13 +771,25 @@ class GameRoom:
             pygame.draw.rect(surface, (82, 60, 42), (cx, cy, crate.w, crate.h))
             pygame.draw.rect(surface, (48, 34, 22), (cx, cy, crate.w, crate.h), 2)
             pygame.draw.line(surface, (48, 34, 22), (cx, cy), (cx + crate.w, cy + crate.h), 2)
+            pygame.draw.rect(surface, (150, 150, 140), (cx + crate.w // 2 - 6, cy + crate.h // 2 - 3, 12, 6))  # latch
+            searched_flag = self.storage_crate_1_searched if crate is self.storage_crate_1 else self.storage_crate_2_searched
+            if searched_flag:
+                pygame.draw.rect(surface, (14, 10, 7), (cx + 5, cy + 5, crate.w - 10, 9))  # lid pried open
 
         sx, sy = self.storage_shelf.x - cam_x, self.storage_shelf.y - cam_y
         pygame.draw.rect(surface, (70, 48, 32), (sx, sy, self.storage_shelf.w, self.storage_shelf.h))
+        for i in range(7):
+            binder_y = sy + 5
+            if i == 3:
+                binder_y += 10 if self.storage_shelf_searched else 6  # one binder sticks out
+            binder_color = (70, 90, 120) if i % 2 == 0 else (150, 130, 95)
+            pygame.draw.rect(surface, binder_color, (sx + 6 + i * 19, binder_y, 14, self.storage_shelf.h - 10))
 
         # --- FOYER ---
         fx, fy = self.foyer_table.x - cam_x, self.foyer_table.y - cam_y
         pygame.draw.rect(surface, (85, 60, 42), (fx, fy, self.foyer_table.w, self.foyer_table.h))
+        pygame.draw.rect(surface, (190, 185, 170), (fx + 9, fy + 14, 30, 22))  # visitor log
+        pygame.draw.line(surface, (110, 100, 90), (fx + 13, fy + 22), (fx + 35, fy + 22), 1)
         fx, fy = self.foyer_shelf.x - cam_x, self.foyer_shelf.y - cam_y
         pygame.draw.rect(surface, (75, 50, 35), (fx, fy, self.foyer_shelf.w, self.foyer_shelf.h))
 
@@ -1064,6 +1106,9 @@ class GameEngine:
         self.flashlight_on = True
         self.battery_dead_time = 0.0
 
+        self.hint_timer = 0.0      # seconds since the last useful action
+        self.searches_done = 0     # how many useful actions so far (hides the tutorial tip)
+
         self.instability = 0.0
         self.room = GameRoom()
         self.creature = Creature()
@@ -1171,124 +1216,314 @@ class GameEngine:
                     self.player_rect.top = c.bottom
                 self.player_y = float(self.player_rect.centery)
 
+    # --------------------------------------------------------------------------
+    # INTERACTION SYSTEM
+    # Every object the player can use is described once in get_interactables().
+    # The [E] prompt, the glint markers, the highlight AND the actual action all
+    # come from this single list, so what you see is always what you get.
+    # --------------------------------------------------------------------------
+    def mark_progress(self):
+        """Call whenever the player does something useful (resets the hint timer)."""
+        self.hint_timer = 0.0
+        self.searches_done += 1
+
+    def dist_to_rect(self, rect):
+        """Distance from the player to the nearest EDGE of a rectangle (not its centre)."""
+        nx = max(rect.left, min(self.player_x, rect.right))
+        ny = max(rect.top, min(self.player_y, rect.bottom))
+        return math.hypot(self.player_x - nx, self.player_y - ny)
+
+    def get_interactables(self):
+        """Builds the list of everything currently usable. kind: story / flavor / item / exit / door."""
+        r = self.room
+        items = []
+
+        def add(key, rect, label, action, kind):
+            items.append({"key": key, "rect": rect, "label": label, "action": action, "kind": kind})
+
+        # --- Bedroom ---
+        if not r.note_read:
+            add("nightstand", r.nightstand_rect, "Read the Note", self.act_nightstand, "story")
+        elif not r.nightstand_searched:
+            add("nightstand", r.nightstand_rect, "Open Nightstand Drawer", self.act_nightstand, "story")
+        if not r.wardrobe_searched:
+            add("wardrobe", r.wardrobe_rect, "Open Wardrobe", self.act_wardrobe, "flavor")
+
+        # --- Study ---
+        if not r.bookshelf_searched:
+            add("bookshelf_1", r.bookshelf_1, "Search Bookshelf", self.act_bookshelf_1, "story")
+        elif r.key_revealed and not r.key_collected:
+            add("bookshelf_1", r.bookshelf_1, "Take the Key", self.act_bookshelf_1, "story")
+        if not r.bookshelf_2_searched:
+            add("bookshelf_2", r.bookshelf_2, "Search Bookshelf", self.act_bookshelf_2, "flavor")
+        if not r.study_desk_searched:
+            add("desk", r.study_desk_rect, "Open Desk Drawers", self.act_desk, "flavor")
+
+        # --- Storage ---
+        if not r.storage_shelf_searched:
+            add("storage_shelf", r.storage_shelf, "Search Storage Shelf", self.act_storage_shelf, "story")
+        elif r.id_revealed and not r.id_collected:
+            add("storage_shelf", r.storage_shelf, "Pick up ID Card", self.act_storage_shelf, "story")
+        if not r.storage_crate_1_searched:
+            add("crate_1", r.storage_crate_1, "Open Wooden Crate", self.act_crate_1, "story")
+        if not r.storage_crate_2_searched:
+            add("crate_2", r.storage_crate_2, "Open Wooden Crate", self.act_crate_2, "flavor")
+
+        # --- Foyer ---
+        if not r.foyer_table_searched:
+            add("foyer_table", r.foyer_table, "Check the Table", self.act_foyer_table, "flavor")
+
+        # --- Hallucinations that can be interacted with ---
+        if r.false_key_visible and not r.false_key_used:
+            add("false_key", r.false_key_rect.inflate(30, 30), "Pick up Key", self.act_false_key, "item")
+        if r.fake_door_visible:
+            add("fake_door", r.fake_door_rect.inflate(30, 30), "Open Door", self.act_fake_door, "item")
+
+        # --- Batteries ---
+        for i, bat in enumerate(r.batteries):
+            if bat["revealed"] and not bat["collected"]:
+                add("battery_%d" % i, bat["rect"].inflate(30, 30), "Pick up Battery",
+                    (lambda b=bat: self.act_battery(b)), "item")
+
+        # --- Doors ---
+        for d in r.doors:
+            if d.is_exit:
+                ready = r.has_key and r.id_collected
+                label = "Unlock Exit Door" if ready else "Try Exit Door"
+                add("door_" + d.name, d.closed_rect, label, (lambda dd=d: self.act_door(dd)),
+                    "exit" if ready else "door")
+            else:
+                label = ("Close " if d.is_open else "Open ") + d.name
+                add("door_" + d.name, d.closed_rect, label, (lambda dd=d: self.act_door(dd)), "door")
+        return items
+
+    def get_current_target(self):
+        """The nearest usable object within INTERACT_RANGE (or None)."""
+        best, best_score = None, 1e9
+        for it in self.get_interactables():
+            d = self.dist_to_rect(it["rect"])
+            if d > INTERACT_RANGE:
+                continue
+            score = d + (25 if it["kind"] == "door" else 0)  # doors never steal the prompt from furniture
+            if score < best_score:
+                best, best_score = it, score
+        return best
+
     def handle_interaction(self):
-        px, py = self.player_x, self.player_y
+        target = self.get_current_target()
+        if target:
+            target["action"]()
 
-        # 1. Search Bedroom Nightstand
-        if math.hypot(px - self.room.nightstand_rect.centerx, py - self.room.nightstand_rect.centery) < 55:
-            if not self.room.note_read:
-                self.state = STATE_READING_NOTE
-                self.audio.play("whisper", 0.7)
-                return
-            elif not self.room.nightstand_searched:
-                self.room.nightstand_searched = True
-                self.room.batteries[0]["revealed"] = True
-                self.audio.play("drawer_open", 0.8)
-                self.show_message("SEARCHED NIGHTSTAND: FOUND A SPARE BATTERY!", 3.5)
-                return
-
-        # 2. Check Wardrobe in Bedroom
-        if math.hypot(px - self.room.wardrobe_rect.centerx, py - self.room.wardrobe_rect.centery) < 65:
-            self.audio.play("drawer_open", 0.7)
-            self.show_thought("EMPTY HANGERS... SCRATCH MARKS ON THE INSIDE DOORS.")
-            return
-
-        # 3. Search Study Bookshelf (Hollow book holds the Key!)
-        if math.hypot(px - self.room.bookshelf_1.centerx, py - self.room.bookshelf_1.centery) < 60:
-            if not self.room.bookshelf_searched:
-                self.room.bookshelf_searched = True
-                self.room.key_revealed = True
-                self.audio.play("drawer_open", 0.9)
-                self.show_message("A HOLLOW BOOK... THE KEY WAS HIDDEN INSIDE!", 4.0)
-                return
-            elif self.room.key_revealed and not self.room.key_collected:
-                self.room.key_collected = True
-                self.room.has_key = True
-                self.instability = min(100.0, self.instability + INSTABILITY_KEY_BOOST)
-                self.audio.play("pickup_key", 0.9)
-                self.show_message("KEY ACQUIRED.", 3.5)
-                return
-
-        # 4. Search Study Desk Drawers
-        if math.hypot(px - self.room.study_desk_rect.centerx, py - self.room.study_desk_rect.centery) < 65:
+    # ---- Actions ----
+    def act_nightstand(self):
+        r = self.room
+        if not r.note_read:
+            self.state = STATE_READING_NOTE
+            self.audio.play("whisper", 0.7)
+            self.mark_progress()
+        elif not r.nightstand_searched:
+            r.nightstand_searched = True
+            r.batteries[0]["revealed"] = True
             self.audio.play("drawer_open", 0.8)
-            self.show_thought("SEARCHED DESK: SHREDDED PATIENT LOGS AND MEDICATION SLIPS.")
+            self.show_message("OPENED THE DRAWER: A SPARE BATTERY!", 3.5)
+            self.mark_progress()
+
+    def act_wardrobe(self):
+        self.room.wardrobe_searched = True
+        self.audio.play("drawer_open", 0.7)
+        self.show_thought("EMPTY HANGERS... SCRATCH MARKS ON THE INSIDE OF THE DOORS.")
+        self.mark_progress()
+
+    def act_bookshelf_1(self):
+        r = self.room
+        if not r.bookshelf_searched:
+            r.bookshelf_searched = True
+            r.key_revealed = True
+            self.audio.play("drawer_open", 0.9)
+            self.show_message("A HOLLOW BOOK... THE KEY WAS HIDDEN INSIDE! [E] TO TAKE IT", 4.5)
+            self.mark_progress()
+        elif r.key_revealed and not r.key_collected:
+            r.key_collected = True
+            r.has_key = True
+            self.instability = min(100.0, self.instability + INSTABILITY_KEY_BOOST)
+            self.audio.play("pickup_key", 0.9)
+            self.show_message("KEY ACQUIRED.", 3.5)
+            self.mark_progress()
+
+    def act_bookshelf_2(self):
+        self.room.bookshelf_2_searched = True
+        self.audio.play("drawer_open", 0.6)
+        self.show_thought("JUST DUST. ...ONE BOOK ON THE OTHER SHELF STICKS OUT.")
+        self.mark_progress()
+
+    def act_desk(self):
+        self.room.study_desk_searched = True
+        self.audio.play("drawer_open", 0.8)
+        self.show_thought("SHREDDED PATIENT LOGS AND MEDICATION SLIPS. NO KEY.")
+        self.mark_progress()
+
+    def act_storage_shelf(self):
+        r = self.room
+        if not r.storage_shelf_searched:
+            r.storage_shelf_searched = True
+            r.id_revealed = True
+            self.state = STATE_READING_ID
+            self.state_timer = 0.0
+            self.audio.play("pickup_key", 0.8)
+            self.mark_progress()
+        elif r.id_revealed and not r.id_collected:
+            self.state = STATE_READING_ID
+            self.state_timer = 0.0
+
+    def act_crate_1(self):
+        self.room.storage_crate_1_searched = True
+        self.room.batteries[1]["revealed"] = True
+        self.audio.play("drawer_open", 0.8)
+        self.show_message("OPENED THE CRATE: A SPARE BATTERY!", 3.5)
+        self.mark_progress()
+
+    def act_crate_2(self):
+        self.room.storage_crate_2_searched = True
+        self.audio.play("drawer_open", 0.7)
+        self.show_thought("EMPTY. ONLY STRAW... AND SOMETHING THAT LOOKS LIKE CLAW MARKS.")
+        self.mark_progress()
+
+    def act_foyer_table(self):
+        self.room.foyer_table_searched = True
+        self.audio.play("drawer_open", 0.5)
+        self.show_thought("THE VISITOR LOG. NO NAMES FOR MONTHS. NOBODY COMES HERE.")
+        self.mark_progress()
+
+    def act_false_key(self):
+        self.room.false_key_used = True
+        self.room.false_key_visible = False
+        self.audio.play("whisper", 0.9)
+        self.flicker_frames = 4
+        self.show_message("...IT WASN'T REAL.", 3.5, is_thought=True)
+
+    def act_fake_door(self):
+        self.room.fake_door_visible = False
+        self.audio.play("whisper", 0.8)
+        self.flicker_frames = 3
+        self.show_message("...THERE'S NOTHING THERE.", 3.5, is_thought=True)
+
+    def act_battery(self, bat):
+        bat["collected"] = True
+        self.battery = min(100.0, self.battery + BATTERY_REFILL)
+        self.audio.play("pickup_battery", 0.85)
+        self.show_message(f"BATTERY COLLECTED (+{int(BATTERY_REFILL)}%)", 3.0)
+        self.mark_progress()
+
+    def act_door(self, d):
+        if d.is_exit:
+            if self.room.has_key and self.room.id_collected:
+                # SUCCESSFUL ESCAPE & PLOT TWIST SEQUENCE!
+                d.is_open = True
+                self.state = STATE_ENDING_ESCAPE
+                self.ending_phase = 1
+                self.ending_timer = 0.0
+                self.audio.play("door_open", 0.9)
+            elif not self.room.has_key:
+                self.show_message("THE DOOR IS LOCKED. I NEED THE KEY.", 3.0)
+            else:
+                self.show_message("I CAN'T LEAVE WITHOUT MY ID.", 3.0)
+        else:
+            d.toggle()
+            self.audio.play("door_open", 0.8)
+
+    # ---- Objective text + visual cues ----
+    def get_objective_text(self):
+        r = self.room
+        if r.has_key and r.id_collected:
+            return "OBJECTIVE: GO TO THE EXIT DOOR (BOTTOM OF THE HOUSE)"
+        if r.has_key:
+            return "OBJECTIVE: FIND YOUR RESIDENT ID"
+        if r.id_collected:
+            return "OBJECTIVE: FIND THE KEY"
+        return "OBJECTIVE: FIND THE KEY + YOUR ID"
+
+    def count_searched(self):
+        r = self.room
+        flags = [r.nightstand_searched, r.wardrobe_searched, r.bookshelf_searched, r.bookshelf_2_searched,
+                 r.study_desk_searched, r.storage_shelf_searched, r.storage_crate_1_searched,
+                 r.storage_crate_2_searched, r.foyer_table_searched]
+        return sum(1 for f in flags if f), len(flags)
+
+    def draw_glint(self, surface, sx, sy, color, alpha, size):
+        """A small pulsing 4-point sparkle, drawn ABOVE the darkness so it is visible in the dark."""
+        s = pygame.Surface((70, 70), pygame.SRCALPHA)
+        c = 35
+        pygame.draw.circle(s, (color[0], color[1], color[2], max(0, alpha // 6)), (c, c), int(size * 2.4))
+        pts = [(c, c - size * 1.7), (c + size * 0.38, c - size * 0.38), (c + size * 1.7, c),
+               (c + size * 0.38, c + size * 0.38), (c, c + size * 1.7), (c - size * 0.38, c + size * 0.38),
+               (c - size * 1.7, c), (c - size * 0.38, c - size * 0.38)]
+        pygame.draw.polygon(s, (color[0], color[1], color[2], alpha), pts)
+        surface.blit(s, (sx - c, sy - c))
+
+    def draw_interaction_cues(self, surface):
+        """Glints on searchable objects, edge arrows when you are lost, and a highlight on the current target."""
+        if self.state != STATE_PLAYING or self.battery <= 0.0:
             return
+        t = pygame.time.get_ticks() / 1000.0
+        target = self.get_current_target()
+        hint_on = self.hint_timer >= HINT_DELAY
+        player_sx = self.player_x - self.cam_x
+        player_sy = self.player_y - self.cam_y
+        colors = {"story": (255, 225, 110), "flavor": (225, 215, 190), "item": (120, 255, 165), "exit": (170, 255, 190)}
 
-        # 5. Search Storage Shelf (Where ID Card is tucked!)
-        if math.hypot(px - self.room.storage_shelf.centerx, py - self.room.storage_shelf.centery) < 60:
-            if not self.room.storage_shelf_searched:
-                self.room.storage_shelf_searched = True
-                self.room.id_revealed = True
-                self.state = STATE_READING_ID
-                self.state_timer = 0.0
-                self.audio.play("pickup_key", 0.8)
-                return
-            elif self.room.id_revealed and not self.room.id_collected:
-                self.state = STATE_READING_ID
-                self.state_timer = 0.0
-                return
+        for it in self.get_interactables():
+            kind = it["kind"]
+            if kind == "door":
+                continue
+            rect = it["rect"]
+            dist = self.dist_to_rect(rect)
+            if kind == "exit":
+                radius = 900
+            elif kind == "story" and hint_on:
+                radius = HINT_SENSE_RADIUS
+            else:
+                radius = SENSE_RADIUS
+            if dist > radius:
+                continue
 
-        # 6. Search Storage Wooden Crate 1
-        if math.hypot(px - self.room.storage_crate_1.centerx, py - self.room.storage_crate_1.centery) < 55:
-            if not self.room.storage_crate_1_searched:
-                self.room.storage_crate_1_searched = True
-                self.room.batteries[1]["revealed"] = True
-                self.audio.play("drawer_open", 0.8)
-                self.show_message("SEARCHED CRATE: FOUND A SPARE BATTERY!", 3.5)
-                return
+            strength = 1.0 - dist / radius
+            alpha = int(70 + 185 * strength)
+            sx = rect.centerx - self.cam_x
+            sy = rect.centery - self.cam_y
+            pulse = 0.5 + 0.5 * math.sin(t * 3.2 + rect.x * 0.01)
+            size = (5 if kind == "flavor" else 7) + 3 * pulse
+            on_screen = -30 <= sx <= SCREEN_WIDTH + 30 and -30 <= sy <= SCREEN_HEIGHT + 30
 
-        # 7. False Key interaction
-        if self.room.false_key_visible and not self.room.false_key_used:
-            if math.hypot(px - self.room.false_key_rect.centerx, py - self.room.false_key_rect.centery) < 50:
-                self.room.false_key_used = True
-                self.room.false_key_visible = False
-                self.audio.play("whisper", 0.9)
-                self.flicker_frames = 4
-                self.show_message("...IT WASN'T REAL.", 3.5, is_thought=True)
-                return
+            if on_screen:
+                self.draw_glint(surface, int(sx), int(sy), colors.get(kind, (255, 255, 255)), alpha, size)
+            elif (hint_on and kind == "story") or kind == "exit":
+                # Off-screen guide arrow at the screen edge, pointing toward the object
+                ang = math.atan2(sy - player_sy, sx - player_sx)
+                ax = max(26, min(SCREEN_WIDTH - 26, SCREEN_WIDTH / 2 + math.cos(ang) * 900))
+                ay = max(26, min(SCREEN_HEIGHT - 26, SCREEN_HEIGHT / 2 + math.sin(ang) * 900))
+                tip = (ax + math.cos(ang) * 12, ay + math.sin(ang) * 12)
+                left = (ax + math.cos(ang + 2.5) * 11, ay + math.sin(ang + 2.5) * 11)
+                right = (ax + math.cos(ang - 2.5) * 11, ay + math.sin(ang - 2.5) * 11)
+                arrow_alpha = int(120 + 100 * pulse)
+                arr = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                pygame.draw.polygon(arr, (*colors.get(kind, (255, 255, 255)), arrow_alpha), [tip, left, right])
+                surface.blit(arr, (0, 0))
 
-        # 8. Fake Door interaction
-        if self.room.fake_door_visible:
-            if math.hypot(px - self.room.fake_door_rect.centerx, py - self.room.fake_door_rect.centery) < 65:
-                self.room.fake_door_visible = False
-                self.audio.play("whisper", 0.8)
-                self.flicker_frames = 3
-                self.show_message("...THERE'S NOTHING THERE.", 3.5, is_thought=True)
-                return
-
-        # 9. Batteries pickup (only if revealed)
-        for bat in self.room.batteries:
-            if bat["revealed"] and not bat["collected"] and math.hypot(px - bat["rect"].centerx, py - bat["rect"].centery) < 50:
-                bat["collected"] = True
-                self.battery = min(100.0, self.battery + BATTERY_REFILL)
-                self.audio.play("pickup_battery", 0.85)
-                self.show_message(f"BATTERY COLLECTED (+{int(BATTERY_REFILL)}%)", 3.0)
-                return
-
-        # 10. Interactive Doors & Exit Door
-        for d in self.room.doors:
-            dist = math.hypot(px - d.closed_rect.centerx, py - d.closed_rect.centery)
-            if dist < 65:
-                if d.is_exit:
-                    if self.room.has_key and self.room.id_collected:
-                        # SUCCESSFUL ESCAPE & PLOT TWIST SEQUENCE!
-                        d.is_open = True
-                        self.state = STATE_ENDING_ESCAPE
-                        self.ending_phase = 1
-                        self.ending_timer = 0.0
-                        self.audio.play("door_open", 0.9)
-                        return
-                    elif not self.room.has_key:
-                        self.show_message("THE DOOR IS LOCKED.", 3.0)
-                        return
-                    elif not self.room.id_collected:
-                        self.show_message("I CAN'T LEAVE WITHOUT MY ID.", 3.0)
-                        return
-                else:
-                    d.toggle()
-                    self.audio.play("door_open", 0.8)
-                    return
+        # Highlight + floating [E] badge on the object you are about to use
+        if target and target["kind"] != "door":
+            rect = target["rect"]
+            sx = rect.x - self.cam_x
+            sy = rect.y - self.cam_y
+            pulse = 0.5 + 0.5 * math.sin(t * 6.0)
+            glow = pygame.Surface((rect.w + 16, rect.h + 16), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (255, 240, 150, int(110 + 100 * pulse)), glow.get_rect(), 2)
+            surface.blit(glow, (sx - 8, sy - 8))
+            badge = pygame.Rect(0, 0, 24, 24)
+            badge.center = (sx + rect.w // 2, sy - 20)
+            pygame.draw.rect(surface, (20, 18, 14), badge)
+            pygame.draw.rect(surface, (255, 240, 150), badge, 2)
+            e_surf = self.font_hud.render("E", True, (255, 240, 150))
+            surface.blit(e_surf, (badge.centerx - e_surf.get_width() // 2, badge.centery - e_surf.get_height() // 2))
 
     def is_point_in_flashlight(self, world_pos):
         if not self.flashlight_on:
@@ -1406,6 +1641,7 @@ class GameEngine:
 
         elif self.state == STATE_PLAYING:
             self.game_time += dt
+            self.hint_timer += dt
             self.handle_input(dt)
             self.update_instability(dt)
             self.update_creature(dt)
@@ -1477,6 +1713,13 @@ class GameEngine:
 
         # Ambient personal halo: When ON: 34px. When OFF: 22px (soft small halo around character)
         personal_radius = 34 if self.flashlight_on else 22
+        # Soft dim pool of light so nearby furniture is readable (disappears when the battery is dead)
+        if self.battery > 0.0:
+            ring_max = AMBIENT_SIGHT_RADIUS if self.flashlight_on else 56
+            for ring_r in range(ring_max, personal_radius, -4):
+                t_ring = (ring_max - ring_r) / max(1.0, (ring_max - personal_radius))
+                ring_alpha = int(ambient_darkness - (ambient_darkness - 168) * t_ring)
+                pygame.draw.circle(self.darkness_surf, (6, 6, 10, ring_alpha), (px, py), ring_r)
         pygame.draw.circle(self.darkness_surf, (0, 0, 0, 0), (px, py), personal_radius)
 
         # Flashlight cone (tighter 54 deg beam)
@@ -1669,6 +1912,9 @@ class GameEngine:
                 pygame.draw.circle(canvas, (255, 60, 40), (int(cx - 4), int(cy - 14)), 1)
                 pygame.draw.circle(canvas, (255, 60, 40), (int(cx + 4), int(cy - 14)), 1)
 
+            # Glints / highlight / guide arrows (drawn above the darkness)
+            self.draw_interaction_cues(canvas)
+
             # HUD
             hud_bg = pygame.Surface((310, 68), pygame.SRCALPHA)
             hud_bg.fill((15, 15, 20, 195))
@@ -1688,49 +1934,35 @@ class GameEngine:
             canvas.blit(bat_txt, (30, 46))
             canvas.blit(toggle_txt, (30, 64))
 
-            # Contextual Interaction Prompts (Searching Furniture)
-            px, py = self.player_x, self.player_y
-            prompt = ""
-
-            if math.hypot(px - self.room.nightstand_rect.centerx, py - self.room.nightstand_rect.centery) < 55:
-                if not self.room.note_read:
-                    prompt = "[E] Read Note"
-                elif not self.room.nightstand_searched:
-                    prompt = "[E] Search Nightstand Drawer"
-            elif math.hypot(px - self.room.wardrobe_rect.centerx, py - self.room.wardrobe_rect.centery) < 65:
-                prompt = "[E] Check Wardrobe"
-            elif math.hypot(px - self.room.bookshelf_1.centerx, py - self.room.bookshelf_1.centery) < 60:
-                if not self.room.bookshelf_searched:
-                    prompt = "[E] Search Bookshelf"
-                elif self.room.key_revealed and not self.room.key_collected:
-                    prompt = "[E] Take Key"
-            elif math.hypot(px - self.room.study_desk_rect.centerx, py - self.room.study_desk_rect.centery) < 65:
-                prompt = "[E] Search Desk Drawers"
-            elif math.hypot(px - self.room.storage_shelf.centerx, py - self.room.storage_shelf.centery) < 60:
-                if not self.room.storage_shelf_searched:
-                    prompt = "[E] Search Storage Shelf"
-                elif self.room.id_revealed and not self.room.id_collected:
-                    prompt = "[E] Pick up ID Card"
-            elif math.hypot(px - self.room.storage_crate_1.centerx, py - self.room.storage_crate_1.centery) < 55:
-                if not self.room.storage_crate_1_searched:
-                    prompt = "[E] Search Wooden Crate"
-            elif self.room.false_key_visible and not self.room.false_key_used and math.hypot(px - self.room.false_key_rect.centerx, py - self.room.false_key_rect.centery) < 50:
-                prompt = "[E] Pick up Key"
-            elif self.room.fake_door_visible and math.hypot(px - self.room.fake_door_rect.centerx, py - self.room.fake_door_rect.centery) < 65:
-                prompt = "[E] Open Door"
+            # Objective + search progress panel
+            n_done, n_total = self.count_searched()
+            obj_panel = pygame.Surface((470, 44), pygame.SRCALPHA)
+            obj_panel.fill((15, 15, 20, 170))
+            canvas.blit(obj_panel, (20, 94))
+            canvas.blit(self.font_sm.render(self.get_objective_text(), True, (255, 225, 120)), (30, 99))
+            if self.hint_timer >= HINT_DELAY and self.state == STATE_PLAYING:
+                hint_line = "HINT: FOLLOW THE GLINTS AND ARROWS - STORY OBJECTS ARE MARKED"
+                hint_col = (255, 200, 120) if int(pygame.time.get_ticks() / 600) % 2 == 0 else (200, 150, 90)
             else:
-                for b in self.room.batteries:
-                    if b["revealed"] and not b["collected"] and math.hypot(px - b["rect"].centerx, py - b["rect"].centery) < 50:
-                        prompt = "[E] Pick up Battery"
-                        break
-                if not prompt:
-                    for d in self.room.doors:
-                        if math.hypot(px - d.closed_rect.centerx, py - d.closed_rect.centery) < 65:
-                            if d.is_exit:
-                                prompt = "[E] Unlock Exit Door" if (self.room.has_key and self.room.id_collected) else "[E] Examine Locked Exit Door"
-                            else:
-                                prompt = "[E] Close Door" if d.is_open else f"[E] Open {d.name}"
-                            break
+                hint_line = f"FURNITURE SEARCHED: {n_done}/{n_total}   (WALK CLOSE + [E])"
+                hint_col = (170, 170, 180)
+            canvas.blit(self.font_sm.render(hint_line, True, hint_col), (30, 118))
+
+            # Tutorial tip until the player has done something useful
+            if self.searches_done == 0 and self.game_time < 90 and self.state == STATE_PLAYING:
+                tip_a = self.font_sm.render("TIP: GLINTING FURNITURE CAN BE SEARCHED.", True, (255, 240, 170))
+                tip_b = self.font_sm.render("WALK CLOSE AND PRESS [E].", True, (255, 240, 170))
+                tw = max(tip_a.get_width(), tip_b.get_width()) + 24
+                tip_bg = pygame.Surface((tw, 52), pygame.SRCALPHA)
+                tip_bg.fill((15, 15, 20, 185))
+                tx = SCREEN_WIDTH - tw - 20
+                canvas.blit(tip_bg, (tx, 20))
+                canvas.blit(tip_a, (tx + 12, 26))
+                canvas.blit(tip_b, (tx + 12, 46))
+
+            # Contextual Interaction Prompt (same source of truth as the real action)
+            current_target = self.get_current_target()
+            prompt = ("[E] " + current_target["label"]) if current_target else ""
 
             if prompt and self.state == STATE_PLAYING:
                 p_surf = self.font_hud.render(prompt, True, (255, 240, 150))
