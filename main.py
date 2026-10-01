@@ -2551,9 +2551,9 @@ class GameEngine:
                 canvas.blit(text1, (SCREEN_WIDTH // 2 - text1.get_width() // 2, SCREEN_HEIGHT - 75))
 
                 final_lines = [
-                    "There was no shadow.",
-                    "There was no creature.",
-                    "You were running from yourself."
+                    "There was no shadow in the corner..."
+
+"You were staring at yourself."
                 ]
                 line_gap = 30
                 total_h = (len(final_lines) - 1) * line_gap
@@ -2568,10 +2568,10 @@ class GameEngine:
             canvas.fill((4, 4, 6))
 
             final_lines = [
-                "There was no shadow.",
-                "There was no creature.",
-                "You were running from yourself."
-            ]
+                                "There was no shadow in the corner..."
+            
+            "You were staring at yourself."
+                            ]
             line_gap = 30
             total_h = (len(final_lines) - 1) * line_gap
             start_y = SCREEN_HEIGHT // 2 - total_h // 2
