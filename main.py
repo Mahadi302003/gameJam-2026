@@ -2519,6 +2519,7 @@ class GameEngine:
                 text1.set_alpha(int(255 * (1.0 - fade)))
                 canvas.blit(text1, (SCREEN_WIDTH // 2 - text1.get_width() // 2, SCREEN_HEIGHT - 75))
 
+<<<<<<< HEAD
                 final_lines = [
                     "There was no shadow.",
                     "There was no creature.",
@@ -2531,6 +2532,11 @@ class GameEngine:
                     text2 = self.font_msg.render(line, True, (220, 215, 210))
                     text2.set_alpha(int(255 * fade))
                     canvas.blit(text2, (SCREEN_WIDTH // 2 - text2.get_width() // 2, start_y + i * line_gap))
+=======
+                text2 = self.font_msg.render("There was never anyone else in the room.", True, (220, 215, 210))
+                text2.set_alpha(int(255 * fade))
+                canvas.blit(text2, (SCREEN_WIDTH // 2 - text2.get_width() // 2, SCREEN_HEIGHT // 2 - 30))
+>>>>>>> ce92908b7253be319a1663faaae5e73172fea28c
 
         # ----------------- AMBIGUOUS ENDING (Blackout Death) -----------------
         elif self.state == STATE_AMBIGUOUS_ENDING:
