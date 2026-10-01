@@ -79,6 +79,17 @@ STATE_AMBIGUOUS_ENDING = "AMBIGUOUS_ENDING"
 STATE_GAME_OVER = "GAME_OVER"
 
 
+# Room name detection for the banner system (matches GameRoom wall layout)
+def get_room_name(x, y):
+    """Returns current room name based on world position."""
+    if y < 450:
+        return "Bedroom" if x < 700 else "Study"
+    elif y < 610:
+        return "Hallway"
+    else:
+        return "Storage" if x < 700 else "Foyer"
+
+
 # ==============================================================================
 # 2. AUDIO SYSTEM & PROCEDURAL SYNTHESIS (Zero External Dependency Fallback)
 # ==============================================================================
@@ -1048,6 +1059,68 @@ class Creature:
 
 
 # ==============================================================================
+# 6b. COCKROACH ANIMATION (Environmental Scare)
+# ==============================================================================
+class Cockroach:
+    """A small cockroach that idles along walls and scurries away when illuminated."""
+    def __init__(self, x, y, frames):
+        self.x, self.y = float(x), float(y)
+        self.frames = frames
+        self.frame_index = 0
+        self.frame_timer = 0.0
+        self.fleeing = False
+        self.flee_angle = 0.0
+        self.flee_speed = 0.0
+        self.flee_timer = 0.0
+        self.visible = True
+        self.idle_angle = random.uniform(0, 2 * math.pi)
+        self.idle_timer = random.uniform(0.5, 3.0)
+
+    def update(self, dt, is_illuminated):
+        if not self.visible:
+            return
+        self.frame_timer += dt
+        if self.frame_timer >= 0.07:
+            self.frame_timer = 0.0
+            self.frame_index = (self.frame_index + 1) % max(1, len(self.frames))
+
+        if is_illuminated and not self.fleeing:
+            self.fleeing = True
+            self.flee_angle = random.uniform(0, 2 * math.pi)
+            self.flee_speed = random.uniform(110, 190)
+            self.flee_timer = random.uniform(0.5, 1.0)
+
+        if self.fleeing:
+            self.x += math.cos(self.flee_angle) * self.flee_speed * dt
+            self.y += math.sin(self.flee_angle) * self.flee_speed * dt
+            self.flee_timer -= dt
+            if self.flee_timer <= 0:
+                self.visible = False
+        else:
+            self.idle_timer -= dt
+            if self.idle_timer <= 0:
+                self.idle_angle = random.uniform(0, 2 * math.pi)
+                self.idle_timer = random.uniform(1.5, 5.0)
+            self.x += math.cos(self.idle_angle) * 6 * dt
+            self.y += math.sin(self.idle_angle) * 6 * dt
+
+    def draw(self, surface, cam_x, cam_y):
+        if not self.visible or not self.frames:
+            return
+        frame = self.frames[self.frame_index]
+        sx = int(self.x - cam_x - frame.get_width() // 2)
+        sy = int(self.y - cam_y - frame.get_height() // 2)
+        if self.fleeing:
+            rot = pygame.transform.rotate(frame, -math.degrees(self.flee_angle) + 90)
+            rect = rot.get_rect(center=(sx + frame.get_width() // 2, sy + frame.get_height() // 2))
+            surface.blit(rot, rect.topleft)
+        else:
+            rot = pygame.transform.rotate(frame, -math.degrees(self.idle_angle) + 90)
+            rect = rot.get_rect(center=(sx + frame.get_width() // 2, sy + frame.get_height() // 2))
+            surface.blit(rot, rect.topleft)
+
+
+# ==============================================================================
 # 7. EVENT DIRECTOR (Reality Instability System)
 # ==============================================================================
 class EventDirector:
@@ -1233,6 +1306,17 @@ class GameEngine:
         self.player_sprite = create_player_surface()
         self.jumpscare_sprite = create_jumpscare_surface()
 
+        # Pre-built vignette for sanity effects (radial dark edges)
+        self.vignette_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        max_r = int(math.hypot(cx, cy))
+        for r in range(max_r, 0, -3):
+            t = r / max_r
+            alpha = int(max(0, min(255, (t - 0.35) * 390)))
+            pygame.draw.circle(self.vignette_surf, (0, 0, 0, alpha), (cx, cy), r)
+        self.sanity_inversion_timer = random.uniform(5.0, 10.0)
+        self.font_banner = pygame.font.SysFont("couriernew", 24, bold=True)
+
         self.dust_particles = [
             {"x": random.uniform(0, SCREEN_WIDTH), "y": random.uniform(0, SCREEN_HEIGHT),
              "speed": random.uniform(0.3, 0.9), "angle": random.uniform(0, 2 * math.pi)}
@@ -1306,6 +1390,34 @@ class GameEngine:
         self.heartbeat_timer = 0.0
 
         self.audio.stop_drone()
+
+        # Room banner state
+        self.current_room_name = ""
+        self.room_banner_text = ""
+        self.room_banner_timer = 0.0
+
+        # Cockroach ambient scares
+        self.cockroaches = self._create_cockroaches()
+
+        # Sanity effect timer
+        self.sanity_inversion_timer = random.uniform(5.0, 10.0)
+
+    def _create_cockroaches(self):
+        """Spawn cockroaches in dark corners using the loaded animation frames."""
+        try:
+            assets = AssetManager.get_instance()
+            frames = assets.cockroach_frames
+            if not frames:
+                return []
+        except Exception:
+            return []
+        return [
+            Cockroach(185, 640, frames),   # Storage room corner
+            Cockroach(625, 150, frames),   # Near bedroom wardrobe
+            Cockroach(1210, 410, frames),  # Study hallway edge
+            Cockroach(420, 870, frames),   # Storage room floor
+            Cockroach(1300, 700, frames),  # Foyer shelf shadow
+        ]
 
     def toggle_flashlight(self):
         if self.battery <= 0.0:
@@ -1818,6 +1930,8 @@ class GameEngine:
             self.handle_input(dt)
             self.update_instability(dt)
             self.update_creature(dt)
+            self.update_room_banner(dt)
+            self.update_cockroaches(dt)
 
             if self.flashlight_on:
                 self.battery = max(0.0, self.battery - BATTERY_DRAIN * dt)
@@ -1999,6 +2113,93 @@ class GameEngine:
         surface.blit(prompt, (SCREEN_WIDTH // 2 - prompt.get_width() // 2, cy + ch + 18))
 
     # --------------------------------------------------------------------------
+    # SANITY VISUAL POST-PROCESSING
+    # --------------------------------------------------------------------------
+    def apply_sanity_effects(self, canvas):
+        """Layer increasingly disturbing visual effects as instability rises."""
+        inst = self.instability
+        if inst < 30 or self.state != STATE_PLAYING:
+            return
+
+        # Chromatic aberration at 30%+ — split RGB channels and offset
+        if inst >= 30:
+            offset = max(1, int((inst - 30) / 18))  # 1px at 30%, up to 4px at 100%
+            r_surf = canvas.copy()
+            b_surf = canvas.copy()
+            r_surf.fill((255, 0, 0), special_flags=pygame.BLEND_MULT)
+            b_surf.fill((0, 0, 255), special_flags=pygame.BLEND_MULT)
+            canvas.fill((0, 255, 0), special_flags=pygame.BLEND_MULT)
+            canvas.blit(r_surf, (-offset, 0), special_flags=pygame.BLEND_ADD)
+            canvas.blit(b_surf, (offset, 0), special_flags=pygame.BLEND_ADD)
+
+        # Brief color inversion flashes at 70%+ (1 frame every few seconds)
+        if inst >= 70:
+            self.sanity_inversion_timer -= 1.0 / FPS
+            if self.sanity_inversion_timer <= 0:
+                self.sanity_inversion_timer = random.uniform(3.5, 8.0) * (1.5 - inst / 200.0)
+                inv = pygame.Surface(canvas.get_size())
+                inv.fill((255, 255, 255))
+                inv.blit(canvas, (0, 0), special_flags=pygame.BLEND_RGB_SUB)
+                canvas.blit(inv, (0, 0))
+
+        # Vignette (dark edges) at 50%+ — gets progressively stronger
+        if inst >= 50:
+            strength = (inst - 50) / 50.0  # 0.0 at 50%, 1.0 at 100%
+            vig = self.vignette_surf.copy()
+            vig.set_alpha(int(140 * strength))
+            canvas.blit(vig, (0, 0))
+
+    # --------------------------------------------------------------------------
+    # ROOM NAME BANNER
+    # --------------------------------------------------------------------------
+    def update_room_banner(self, dt):
+        """Detects room transitions and triggers a fading banner."""
+        new_room = get_room_name(self.player_x, self.player_y)
+        if new_room != self.current_room_name:
+            self.current_room_name = new_room
+            self.room_banner_text = new_room.upper()
+            self.room_banner_timer = 2.8  # seconds to display
+        if self.room_banner_timer > 0:
+            self.room_banner_timer -= dt
+
+    def draw_room_banner(self, surface):
+        """Draws a cinematic fading room name banner at the top of the screen."""
+        if self.room_banner_timer <= 0 or not self.room_banner_text:
+            return
+        # Fade in for 0.4s, hold, fade out for 0.8s
+        t = self.room_banner_timer
+        if t > 2.4:
+            alpha = int(255 * (2.8 - t) / 0.4)   # fade in
+        elif t < 0.8:
+            alpha = int(255 * t / 0.8)            # fade out
+        else:
+            alpha = 255
+
+        alpha = max(0, min(255, alpha))
+        text = f"── {self.room_banner_text} ──"
+        txt_surf = self.font_banner.render(text, True, (220, 210, 200))
+        txt_surf.set_alpha(alpha)
+        bg = pygame.Surface((txt_surf.get_width() + 40, txt_surf.get_height() + 12), pygame.SRCALPHA)
+        bg.fill((10, 10, 15, int(alpha * 0.65)))
+        bx = SCREEN_WIDTH // 2 - bg.get_width() // 2
+        surface.blit(bg, (bx, 148))
+        surface.blit(txt_surf, (bx + 20, 154))
+
+    # --------------------------------------------------------------------------
+    # COCKROACH UPDATES
+    # --------------------------------------------------------------------------
+    def update_cockroaches(self, dt):
+        """Update all cockroach positions and check if they're in the flashlight beam."""
+        for roach in self.cockroaches:
+            lit = self.is_point_in_flashlight((roach.x, roach.y))
+            roach.update(dt, lit)
+
+    def draw_cockroaches(self, surface):
+        """Draw all visible cockroaches."""
+        for roach in self.cockroaches:
+            roach.draw(surface, self.cam_x, self.cam_y)
+
+    # --------------------------------------------------------------------------
     # DRAW LOOP
     # --------------------------------------------------------------------------
     def draw(self):
@@ -2061,6 +2262,7 @@ class GameEngine:
             b_val = (pygame.time.get_ticks() / 1000.0) * 1.8 if self.instability > 60 else 0
             self.room.draw_environment(canvas, self.cam_x, self.cam_y, self.font_sm, self.font_hand, b_val)
             self.creature.draw(canvas, self.cam_x, self.cam_y)
+            self.draw_cockroaches(canvas)
 
             if self.peripheral_eyes and not self.is_point_in_flashlight((self.peripheral_eyes[0], self.peripheral_eyes[1])):
                 pex = int(self.peripheral_eyes[0] - self.cam_x)
@@ -2076,6 +2278,7 @@ class GameEngine:
             canvas.blit(rotated, rect.topleft)
 
             self.render_lighting(canvas)
+            self.draw_room_banner(canvas)
 
             if self.creature.is_active and self.creature.is_illuminated:
                 cx = self.creature.pos[0] - self.cam_x
@@ -2281,6 +2484,9 @@ class GameEngine:
             if self.state_timer >= 2.5:
                 t_sub = self.font_hud.render("Press [R] to Play Again   |   [ESC] to Quit", True, (160, 160, 160))
                 canvas.blit(t_sub, (SCREEN_WIDTH // 2 - t_sub.get_width() // 2, SCREEN_HEIGHT // 2 + 35))
+
+        # Apply instability-driven visual distortion
+        self.apply_sanity_effects(canvas)
 
         self.screen.fill((0, 0, 0))
         self.screen.blit(canvas, (ox, oy))

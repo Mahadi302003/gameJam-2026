@@ -188,3 +188,22 @@ class AssetManager:
         pygame.draw.rect(bat_surf, (230, 230, 230), (bw, 6 * SCALE, 3 * SCALE, 5 * SCALE))
         pygame.draw.rect(bat_surf, (20, 50, 25), (2 * SCALE, 2 * SCALE, bw, bh), 1 * SCALE)
         self.sprites['battery_item'] = bat_surf
+
+        # --- COCKROACH ANIMATION FRAMES (192x32 sheet = 6 frames of 32x32) ---
+        self.cockroach_frames = []
+        try:
+            roach_path = os.path.join(self.house2_dir, 'cockroach animation.png')
+            if os.path.exists(roach_path):
+                roach_img = pygame.image.load(roach_path)
+                if pygame.display.get_surface() is not None:
+                    roach_img = roach_img.convert_alpha()
+                rw, rh = roach_img.get_size()
+                frame_w = rh  # square frames (32x32)
+                n_frames = max(1, rw // frame_w)
+                for i in range(n_frames):
+                    frame = roach_img.subsurface((i * frame_w, 0, frame_w, rh)).copy()
+                    frame = pygame.transform.scale(frame, (frame_w * SCALE, rh * SCALE))
+                    self.cockroach_frames.append(frame)
+        except Exception as e:
+            print(f"[AssetManager] Cockroach animation: {e}")
+            self.cockroach_frames = []
