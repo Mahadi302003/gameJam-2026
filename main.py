@@ -1798,6 +1798,30 @@ class GameEngine:
             e_surf = self.font_hud.render("E", True, (255, 240, 150))
             surface.blit(e_surf, (badge.centerx - e_surf.get_width() // 2, badge.centery - e_surf.get_height() // 2))
 
+    def _light_blockers(self):
+        """Walls and closed doors stop the flashlight beam (furniture does not)."""
+        blockers = list(self.room.static_walls)
+        for d in self.room.doors:
+            c = d.get_solid_collider()
+            if c:
+                blockers.append(c)
+        return blockers
+
+    def _beam_ray_length(self, angle, max_range, blockers):
+        """Distance a ray from the player travels before hitting a wall (world space)."""
+        x0, y0 = self.player_x, self.player_y
+        x1 = x0 + math.cos(angle) * max_range
+        y1 = y0 + math.sin(angle) * max_range
+        best = max_range
+        for rect in blockers:
+            hit = rect.clipline(int(x0), int(y0), int(x1), int(y1))
+            if hit:
+                for hx, hy in hit:
+                    d = math.hypot(hx - x0, hy - y0)
+                    if d < best:
+                        best = d
+        return best
+
     def is_point_in_flashlight(self, world_pos):
         if not self.flashlight_on:
             return False
@@ -1809,7 +1833,10 @@ class GameEngine:
             return False
         angle = math.atan2(dy, dx)
         diff = (angle - self.player_angle + math.pi) % (2 * math.pi) - math.pi
-        return abs(diff) <= math.radians(FLASHLIGHT_ANGLE / 2.0)
+        if abs(diff) > math.radians(FLASHLIGHT_ANGLE / 2.0):
+            return False
+        # Not lit if a wall / closed door is between the player and the point
+        return dist <= self._beam_ray_length(angle, dist, self._light_blockers())
 
     def update_instability(self, dt):
         rate = INSTABILITY_RISE_RATE
@@ -2013,11 +2040,15 @@ class GameEngine:
             beam_range = FLASHLIGHT_RANGE * (0.85 if self.battery < 25.0 else 1.0)
             cone_points = [(px, py)]
             half_angle = math.radians(FLASHLIGHT_ANGLE / 2.0)
-            segments = 32
+            segments = 64
+            blockers = self._light_blockers()
             for i in range(segments + 1):
                 cur_ang = (self.player_angle - half_angle) + (2 * half_angle * i / segments)
-                bx = px + math.cos(cur_ang) * beam_range
-                by = py + math.sin(cur_ang) * beam_range
+                # Stop each ray at the first wall; push a few px in so the wall face is lit
+                ray_len = self._beam_ray_length(cur_ang, beam_range, blockers)
+                ray_len = min(beam_range, ray_len + 6)
+                bx = px + math.cos(cur_ang) * ray_len
+                by = py + math.sin(cur_ang) * ray_len
                 cone_points.append((bx, by))
 
             pygame.draw.polygon(self.darkness_surf, (0, 0, 0, 0), cone_points)
