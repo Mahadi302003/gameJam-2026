@@ -5,24 +5,31 @@
 
 ---
 
-## 🎮 How to Play
+## 🎮 Flow & How to Play
+
+### Game Flow
+1. **Title Menu** — Press <kbd>SPACE</kbd> or <kbd>Left-Click</kbd> to begin.
+2. **Prologue Story Screen** — Atmospheric narrative fade-in describing the protagonist's slipping mental state, establishing the psychological horror. Press <kbd>SPACE</kbd> to wake up into the game.
+3. **Gameplay** — Wake up in the **Central Hallway** with doors open, ready to roam and search the interconnected rooms.
 
 ### Controls
 * **W, A, S, D** — Move protagonist
 * **Mouse Cursor** — Aim flashlight beam
 * **Left-Click / Right-Click / F** — **Toggle Flashlight ON / OFF** (Conserve battery, but beware of what moves in the dark!)
-* **E** — **Interact:** Open/Close Doors, Pick up Key & Batteries, Unlock Main Exit Door
+* **E** — **Interact:** Pick up Key & Batteries, Open/Close Doors, Unlock Main Exit Door
 * **R** — Restart game at any time
 * **ESC** — Quit
 
 ### Objective
-1. Start in the dark **Bedroom**.
-2. Press **[E]** to unlatch the door and step out into the **Central Hallway**.
-3. Explore the interconnected rooms (**Bedroom, Study/Gallery, Storage Room, and Exit Foyer**).
-4. Find the **Key** hidden on the writing desk in the **Study**.
-5. Pick up spare **Batteries** to keep your flashlight charged.
-6. **DON'T LOOK AWAY:** The creature freezes when caught in your flashlight beam, but moves closer whenever you turn away, turn your flashlight off, or let the darkness take over.
-7. Reach the **Heavy Main Exit Door** in the Foyer and escape... or discover what is actually happening.
+1. Start in the **Central Hallway** outside the rooms.
+2. The room doors are **open and unlocked**, allowing you to immediately enter and explore:
+   * **The Study & Gallery (Top-Right):** Look for the glowing golden **Key** resting on the large study desk. Don't miss the changing portrait on the wall.
+   * **The Bedroom (Top-Left):** Contains **Battery 1** on the nightstand, wardrobe, and the shifting chair.
+   * **The Storage Room (Bottom-Left):** Contains **Battery 2** on a supply crate and the carved wall clue: `"DON'T LET IT GO DARK."`
+   * **The Exit Foyer (Bottom-Right):** Contains **Battery 3** and the **Heavy Locked Exit Door**.
+3. Pick up the **Key** from the Study.
+4. **DON'T LOOK AWAY:** The creature freezes when caught in your flashlight beam, but moves closer whenever you turn away, turn your flashlight off, or let the darkness take over.
+5. Reach the **Heavy Main Exit Door** in the Foyer with your key and press <kbd>E</kbd> to escape... or discover what is actually happening.
 
 ---
 
@@ -48,43 +55,13 @@ All core gameplay and balance parameters are located right at the top of [main.p
 
 ```python
 PLAYER_SPEED = 3.3           # WASD speed in pixels per frame
-FLASHLIGHT_ANGLE = 78        # Beam cone angle in degrees (70-90)
-FLASHLIGHT_RANGE = 390       # Beam reach in pixels
+FLASHLIGHT_ANGLE = 80        # Beam cone angle in degrees (70-90)
+FLASHLIGHT_RANGE = 400       # Beam reach in pixels
 FLASHLIGHT_BATTERY = 100.0   # Starting battery percentage
-BATTERY_DRAIN = 1.8          # Battery % drained per second while flashlight is ON
-BATTERY_REFILL = 45.0        # Battery % restored per battery pickup
-CREATURE_MOVE_DELAY = 1.6    # Seconds outside flashlight beam before relocating
-CREATURE_AGGRO_DELAY = 0.9   # Faster relocation once key is obtained
+BATTERY_DRAIN = 0.65         # Battery % drained per second while flashlight is ON (~155s of continuous light)
+BATTERY_REFILL = 50.0        # Battery % restored per battery pickup
+CREATURE_MOVE_DELAY = 1.8    # Seconds outside flashlight beam before relocating
+CREATURE_AGGRO_DELAY = 1.0   # Faster relocation once key is obtained
 CREATURE_ATTACK_DIST = 46    # Proximity threshold for game over in darkness
-BLACKOUT_KILL_TIME = 4.2     # Seconds of total darkness before forced jumpscare
+BLACKOUT_KILL_TIME = 4.5     # Seconds of total darkness before forced jumpscare
 ```
-
----
-
-## 📁 Optional External Assets
-
-The game contains procedural pixel-art sprites and built-in procedural audio synthesis, so it runs completely self-contained.
-
-You can drop your custom art or sound files directly into `assets/` at any time:
-
-```text
-gamejam/
-│
-├── main.py
-├── README.md
-├── run_game.bat
-└── assets/
-    ├── images/
-    │   └── (Optional: player.png, creature.png, jumpscare.png)
-    └── sounds/
-        ├── click.wav           # Flashlight toggle click
-        ├── footstep.wav        # Walking footsteps
-        ├── pickup_battery.wav  # Battery pickup
-        ├── pickup_key.wav      # Key pickup
-        ├── creature_move.wav   # Rustle / scuttle sound
-        ├── door_open.wav       # Creaking door unlatching
-        ├── heartbeat.wav       # Heartbeat in darkness
-        └── jumpscare.wav       # Climax jumpscare sound
-```
-
-If an asset is missing or fails to load, the game automatically uses the procedural fallback and will **never crash**.

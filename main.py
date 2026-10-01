@@ -8,7 +8,7 @@ Controls:
 - W, A, S, D       : Move protagonist
 - Mouse Cursor     : Aim flashlight beam
 - Left-Click / F   : Toggle Flashlight ON / OFF
-- E                : Interact / Open Doors / Pick up Key & Battery / Escape
+- E                : Interact / Open/Close Doors / Pick up Key & Battery / Escape
 - R                : Restart game
 - ESC              : Quit
 """
@@ -24,7 +24,7 @@ import pygame
 
 # ==============================================================================
 # 1. GAMEPLAY CONFIGURATION & DIFFICULTY TUNING
-# GameJam judges and developers can easily tweak balance values right here.
+# GameJam balance values
 # ==============================================================================
 SCREEN_WIDTH = 960
 SCREEN_HEIGHT = 640
@@ -38,21 +38,22 @@ WORLD_HEIGHT = 1050
 PLAYER_SPEED = 3.3           # Pixels per frame (WASD movement speed)
 PLAYER_SIZE = 24             # Bounding box width/height for collision
 
-# Flashlight mechanics
-FLASHLIGHT_ANGLE = 78        # Beam cone angle in degrees (70-90)
-FLASHLIGHT_RANGE = 390       # Beam reach in pixels
+# Flashlight mechanics (Balanced for relaxed exploration)
+FLASHLIGHT_ANGLE = 80        # Beam cone angle in degrees (70-90)
+FLASHLIGHT_RANGE = 400       # Beam reach in pixels
 FLASHLIGHT_BATTERY = 100.0   # Initial battery percentage (0 to 100)
-BATTERY_DRAIN = 1.8          # Battery % drained per second while flashlight is ON
-BATTERY_REFILL = 45.0        # Battery % restored per battery pickup
+BATTERY_DRAIN = 0.65         # Battery % drained per second (~155s of continuous light)
+BATTERY_REFILL = 50.0        # Battery % restored per battery pickup
 
 # Creature mechanics
-CREATURE_MOVE_DELAY = 1.6    # Seconds unseen before creature can relocate
-CREATURE_AGGRO_DELAY = 0.9   # Faster relocation once key is obtained / aggressive
+CREATURE_MOVE_DELAY = 1.8    # Seconds unseen before creature can relocate
+CREATURE_AGGRO_DELAY = 1.0   # Faster relocation once key is obtained / aggressive
 CREATURE_ATTACK_DIST = 46    # Proximity threshold for game over in darkness
-BLACKOUT_KILL_TIME = 4.2     # Seconds of total darkness before forced jumpscare
+BLACKOUT_KILL_TIME = 4.5     # Seconds of total darkness before forced jumpscare
 
 # Game States
 STATE_MENU = "MENU"
+STATE_INTRO_STORY = "INTRO_STORY"
 STATE_PLAYING = "PLAYING"
 STATE_ENDING_SEQUENCE = "ENDING_SEQUENCE"
 STATE_JUMPSCARE = "JUMPSCARE"
@@ -97,7 +98,6 @@ def generate_sound(name):
 
     try:
         if name == "click":
-            # Sharp tactile flashlight switch click
             duration = int(rate * 0.04)
             samples = [
                 math.sin(2 * math.pi * 2400 * i / rate) * math.exp(-i / (rate * 0.007)) * 26000
@@ -107,7 +107,6 @@ def generate_sound(name):
             return _synthesize_wav(samples, rate)
 
         elif name == "footstep":
-            # Muffled low floorboard step
             duration = int(rate * 0.07)
             samples = [
                 math.sin(2 * math.pi * 75 * i / rate) * math.exp(-i / (rate * 0.02)) * 14000
@@ -117,7 +116,6 @@ def generate_sound(name):
             return _synthesize_wav(samples, rate)
 
         elif name == "pickup_battery":
-            # Rising 2-tone tech pickup chime
             duration = int(rate * 0.22)
             half = duration // 2
             samples = []
@@ -128,7 +126,6 @@ def generate_sound(name):
             return _synthesize_wav(samples, rate)
 
         elif name == "pickup_key":
-            # Bright mystical chime (3 harmonics)
             duration = int(rate * 0.35)
             samples = [
                 (
@@ -141,7 +138,6 @@ def generate_sound(name):
             return _synthesize_wav(samples, rate)
 
         elif name == "creature_move":
-            # Low, eerie wood-scratch and scuttle
             duration = int(rate * 0.30)
             samples = [
                 (
@@ -153,7 +149,6 @@ def generate_sound(name):
             return _synthesize_wav(samples, rate)
 
         elif name == "door_open":
-            # Low creaking wooden door unlatching and swinging
             duration = int(rate * 0.55)
             samples = [
                 (
@@ -165,7 +160,6 @@ def generate_sound(name):
             return _synthesize_wav(samples, rate)
 
         elif name == "heartbeat":
-            # Deep bass double-thump (lub-dub)
             duration = int(rate * 0.5)
             samples = [0] * duration
             for i in range(int(rate * 0.15)):
@@ -177,7 +171,6 @@ def generate_sound(name):
             return _synthesize_wav(samples, rate)
 
         elif name == "jumpscare":
-            # Terrifying dissonant screech, bass impact, and harsh noise
             duration = int(rate * 1.8)
             samples = []
             for i in range(duration):
@@ -212,7 +205,6 @@ class AudioManager:
 
         for name in sound_names:
             sound_obj = None
-            # Check for optional external audio files (.wav, .ogg, .mp3)
             for ext in [".wav", ".ogg", ".mp3"]:
                 path = os.path.join(sound_dir, f"{name}{ext}")
                 if os.path.exists(path) and AUDIO_INITIALIZED:
@@ -222,7 +214,6 @@ class AudioManager:
                     except Exception:
                         sound_obj = None
 
-            # Fallback to procedural synthesis if external file missing
             if sound_obj is None and AUDIO_INITIALIZED:
                 sound_obj = generate_sound(name)
 
@@ -251,7 +242,6 @@ def create_player_surface():
     pygame.draw.circle(surf, (20, 25, 30), (16, 16), 11, 2)
     pygame.draw.circle(surf, (215, 180, 150), (16, 16), 6)
     pygame.draw.circle(surf, (40, 25, 20), (16, 14), 6)
-    # Flashlight in hand
     pygame.draw.rect(surf, (180, 180, 190), (22, 18, 8, 4))
     pygame.draw.rect(surf, (255, 240, 120), (28, 17, 3, 6))
     return surf
@@ -267,7 +257,6 @@ def create_creature_surface():
     pygame.draw.line(surf, (25, 20, 30), (6, 44), (4, 50), 2)
     pygame.draw.line(surf, (25, 20, 30), (38, 44), (40, 50), 2)
     pygame.draw.ellipse(surf, (18, 15, 22), (14, 4, 16, 18))
-    # Glowing eyes
     pygame.draw.circle(surf, (255, 245, 210), (18, 11), 2)
     pygame.draw.circle(surf, (255, 245, 210), (26, 11), 2)
     pygame.draw.circle(surf, (255, 60, 40), (18, 11), 1)
@@ -327,13 +316,13 @@ def create_painting_surfaces():
 
 # ==============================================================================
 # 4. INTERACTIVE DOOR CLASS
-# Doors can be opened/closed with [E], removing solid barriers so players can enter!
+# Room doors are OPEN BY DEFAULT so the player can immediately enter and explore!
 # ==============================================================================
 class InteractiveDoor:
-    """An interactive door that swings open upon [E], allowing entry into rooms."""
-    def __init__(self, x, y, width, height, is_exit=False, name="Door"):
+    """An interactive door. Interior room doors start OPEN by default."""
+    def __init__(self, x, y, width, height, is_exit=False, is_open=True, name="Door"):
         self.closed_rect = pygame.Rect(x, y, width, height)
-        self.is_open = False
+        self.is_open = is_open
         self.is_exit = is_exit
         self.name = name
 
@@ -353,38 +342,35 @@ class InteractiveDoor:
         w, h = self.closed_rect.width, self.closed_rect.height
 
         if self.is_exit:
-            # Heavy reinforced Exit Door
+            # Heavy Exit Door (Closed & locked until key is found)
             color = (65, 85, 65) if self.is_open else (90, 45, 45)
             pygame.draw.rect(surface, color, (sx, sy, w, h))
             pygame.draw.rect(surface, (25, 25, 25), (sx, sy, w, h), 2)
             pygame.draw.circle(surface, (220, 190, 80), (sx + w // 2, sy + h // 2), 4)
         else:
             if not self.is_open:
-                # Closed door blocking the doorway
+                # Closed door
                 pygame.draw.rect(surface, (110, 80, 55), (sx, sy, w, h))
                 pygame.draw.rect(surface, (55, 38, 25), (sx, sy, w, h), 2)
-                # Brass door knob
                 knob_x = sx + (w - 8 if w > h else w // 2)
                 knob_y = sy + (h // 2 if w > h else h - 8)
                 pygame.draw.circle(surface, (215, 185, 75), (knob_x, knob_y), 3)
             else:
-                # Open door swung to the side
+                # Open door swung to the wall, leaving doorway clear!
                 swung_rect = (sx - 4, sy - h, 8, h + 4) if w > h else (sx - w, sy - 4, w + 4, 8)
-                pygame.draw.rect(surface, (90, 65, 42), swung_rect)
-                pygame.draw.rect(surface, (40, 28, 18), swung_rect, 1)
+                pygame.draw.rect(surface, (95, 68, 44), swung_rect)
+                pygame.draw.rect(surface, (45, 30, 20), swung_rect, 1)
 
 
 # ==============================================================================
 # 5. MULTI-ROOM ENVIRONMENT & LEVEL LAYOUT
 # ==============================================================================
 class GameRoom:
-    """Manages the expanded multi-room floor plan (Hallway, Bedroom, Study, Storage, Foyer)."""
+    """Manages the multi-room layout with open doorways so player can enter immediately."""
     def __init__(self):
-        # House boundary
         self.house_rect = pygame.Rect(100, 80, 1300, 880)
-        self.wall_thickness = 18
 
-        # Outer Perimeter Walls
+        # Static Walls
         self.static_walls = [
             # Outer North
             pygame.Rect(100, 80, 1300, 18),
@@ -400,28 +386,28 @@ class GameRoom:
             # Dividing Wall: Storage vs Foyer (Vertical, bottom half)
             pygame.Rect(690, 600, 18, 360),
 
-            # Hallway North Wall (with doorways at x=360 and x=980)
+            # Hallway North Wall (with wide open doorways at x=360 and x=980)
             pygame.Rect(100, 440, 260, 18),
-            pygame.Rect(420, 440, 560, 18),
-            pygame.Rect(1040, 440, 360, 18),
+            pygame.Rect(430, 440, 550, 18),
+            pygame.Rect(1050, 440, 350, 18),
 
-            # Hallway South Wall (with doorways at x=360 and x=980)
+            # Hallway South Wall (with wide open doorways at x=360 and x=980)
             pygame.Rect(100, 600, 260, 18),
-            pygame.Rect(420, 600, 560, 18),
-            pygame.Rect(1040, 600, 360, 18),
+            pygame.Rect(430, 600, 550, 18),
+            pygame.Rect(1050, 600, 350, 18),
         ]
 
-        # Interactive Interior Doors (Can be opened with [E] to enter rooms!)
+        # Room doors are OPEN BY DEFAULT so the player can enter immediately!
         self.doors = [
-            InteractiveDoor(360, 440, 60, 18, is_exit=False, name="Bedroom Door"),
-            InteractiveDoor(980, 440, 60, 18, is_exit=False, name="Study Door"),
-            InteractiveDoor(360, 600, 60, 18, is_exit=False, name="Storage Door"),
-            InteractiveDoor(980, 600, 60, 18, is_exit=False, name="Foyer Door"),
-            # Main Exit Door at the bottom of the Exit Foyer (Requires Key)
-            InteractiveDoor(980, 942, 80, 18, is_exit=True, name="Main Exit Door"),
+            InteractiveDoor(360, 440, 70, 18, is_exit=False, is_open=True, name="Bedroom Door"),
+            InteractiveDoor(980, 440, 70, 18, is_exit=False, is_open=True, name="Study Door"),
+            InteractiveDoor(360, 600, 70, 18, is_exit=False, is_open=True, name="Storage Door"),
+            InteractiveDoor(980, 600, 70, 18, is_exit=False, is_open=True, name="Foyer Door"),
+            # Main Exit Door is locked (Requires Key)
+            InteractiveDoor(980, 942, 80, 18, is_exit=True, is_open=False, name="Main Exit Door"),
         ]
 
-        # Furniture Colliders across Rooms
+        # Furniture Colliders
         # 1. Bedroom (Top-Left)
         self.bed_rect = pygame.Rect(140, 110, 120, 160)
         self.nightstand_rect = pygame.Rect(270, 110, 45, 45)
@@ -459,12 +445,12 @@ class GameRoom:
         self.foyer_table = pygame.Rect(730, 700, 50, 90)
         self.foyer_shelf = pygame.Rect(1280, 680, 45, 90)
 
-        # Interactive Key (Hidden on Study Desk)
+        # Key (Located clearly in the Study on the desk)
         self.has_key = False
-        self.key_rect = pygame.Rect(1210, 140, 22, 22)
+        self.key_rect = pygame.Rect(1200, 150, 24, 24)
         self.key_collected = False
 
-        # 3 Flashlight Batteries spread throughout the house
+        # 3 Batteries
         self.batteries = [
             {"rect": pygame.Rect(280, 120, 18, 18), "collected": False, "room": "Bedroom"},
             {"rect": pygame.Rect(165, 835, 18, 18), "collected": False, "room": "Storage"},
@@ -474,13 +460,11 @@ class GameRoom:
     def get_solid_colliders(self):
         """Returns all solid bounding boxes player cannot pass through."""
         colliders = list(self.static_walls)
-        # Add closed doors
         for d in self.doors:
             c = d.get_solid_collider()
             if c:
                 colliders.append(c)
 
-        # Add solid furniture
         colliders.extend([
             self.bed_rect, self.nightstand_rect, self.wardrobe_rect, self.chair_rect,
             self.study_desk_rect, self.bookshelf_1, self.bookshelf_2, self.study_table,
@@ -491,7 +475,7 @@ class GameRoom:
 
     def draw_environment(self, surface, cam_x, cam_y, font_sm):
         """Renders floorboards, walls, furniture, and environmental clues."""
-        # Floorboards across the entire house
+        # Floorboards
         floor_color_1 = (40, 32, 26)
         floor_color_2 = (35, 28, 22)
         for y in range(self.house_rect.top, self.house_rect.bottom, 24):
@@ -502,7 +486,7 @@ class GameRoom:
                 pygame.draw.rect(surface, color, (sx, sy, self.house_rect.width, 24))
                 pygame.draw.line(surface, (24, 18, 14), (sx, sy), (sx + self.house_rect.width, sy), 1)
 
-        # Walls
+        # Static Walls
         for w in self.static_walls:
             sx = w.x - cam_x
             sy = w.y - cam_y
@@ -520,26 +504,22 @@ class GameRoom:
         surface.blit(clue_surf, (clue_sx, clue_sy))
 
         # --- BEDROOM FURNITURE ---
-        # Bed
         bx, by = self.bed_rect.x - cam_x, self.bed_rect.y - cam_y
         pygame.draw.rect(surface, (75, 52, 38), (bx, by, self.bed_rect.w, self.bed_rect.h))
         pygame.draw.rect(surface, (135, 125, 115), (bx + 6, by + 6, self.bed_rect.w - 12, self.bed_rect.h - 12))
         pygame.draw.rect(surface, (175, 170, 160), (bx + 10, by + 10, self.bed_rect.w - 20, 32))
         pygame.draw.rect(surface, (90, 70, 60), (bx + 6, by + 65, self.bed_rect.w - 12, self.bed_rect.h - 71))
 
-        # Nightstand
         nx, ny = self.nightstand_rect.x - cam_x, self.nightstand_rect.y - cam_y
         pygame.draw.rect(surface, (85, 60, 42), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h))
         pygame.draw.rect(surface, (45, 32, 22), (nx, ny, self.nightstand_rect.w, self.nightstand_rect.h), 2)
 
-        # Wardrobe
         wx, wy = self.wardrobe_rect.x - cam_x, self.wardrobe_rect.y - cam_y
         pygame.draw.rect(surface, (68, 44, 28), (wx, wy, self.wardrobe_rect.w, self.wardrobe_rect.h))
         pygame.draw.rect(surface, (38, 24, 15), (wx, wy, self.wardrobe_rect.w, self.wardrobe_rect.h), 2)
         pygame.draw.line(surface, (20, 10, 8), (wx + self.wardrobe_rect.w // 2, wy + 4),
                          (wx + self.wardrobe_rect.w // 2, wy + self.wardrobe_rect.h - 4), 2)
 
-        # Moving Chair
         cx, cy = self.chair_rect.x - cam_x, self.chair_rect.y - cam_y
         pygame.draw.rect(surface, (105, 72, 48), (cx, cy, self.chair_rect.w, self.chair_rect.h))
         pygame.draw.rect(surface, (55, 38, 24), (cx, cy, self.chair_rect.w, self.chair_rect.h), 2)
@@ -549,14 +529,12 @@ class GameRoom:
             pygame.draw.rect(surface, (75, 48, 28), (cx + 2, cy + 2, self.chair_rect.w - 4, 4))
 
         # --- STUDY FURNITURE ---
-        # Study Desk
         dx, dy = self.study_desk_rect.x - cam_x, self.study_desk_rect.y - cam_y
         pygame.draw.rect(surface, (95, 68, 46), (dx, dy, self.study_desk_rect.w, self.study_desk_rect.h))
         pygame.draw.rect(surface, (55, 38, 26), (dx, dy, self.study_desk_rect.w, self.study_desk_rect.h), 2)
         pygame.draw.rect(surface, (195, 190, 175), (dx + 15, dy + 15, 24, 28))
         pygame.draw.rect(surface, (185, 180, 165), (dx + 48, dy + 20, 28, 24))
 
-        # Bookshelves
         for b in [self.bookshelf_1, self.bookshelf_2]:
             bx, by = b.x - cam_x, b.y - cam_y
             pygame.draw.rect(surface, (78, 52, 34), (bx, by, b.w, b.h))
@@ -564,11 +542,9 @@ class GameRoom:
             for i in range(5):
                 pygame.draw.rect(surface, (140 + i * 15, 60 + i * 10, 40), (bx + 8 + i * 24, by + 4, 18, b.h - 8))
 
-        # Study table
         stx, sty = self.study_table.x - cam_x, self.study_table.y - cam_y
         pygame.draw.rect(surface, (88, 62, 42), (stx, sty, self.study_table.w, self.study_table.h))
 
-        # Changing Painting (on North Wall of Study)
         px, py = self.painting_rect.x - cam_x, self.painting_rect.y - cam_y
         painting_surf = self.painting_corrupt if self.painting_altered else self.painting_normal
         surface.blit(painting_surf, (px, py))
@@ -589,14 +565,18 @@ class GameRoom:
         fx, fy = self.foyer_shelf.x - cam_x, self.foyer_shelf.y - cam_y
         pygame.draw.rect(surface, (75, 50, 35), (fx, fy, self.foyer_shelf.w, self.foyer_shelf.h))
 
-        # --- KEY ITEM (if not collected) ---
+        # --- KEY ITEM (Glows with gold shine on the Study desk) ---
         if not self.key_collected:
-            kx, ky = self.key_rect.centerx - cam_x, self.key_rect.centery - cam_y
-            pygame.draw.circle(surface, (250, 220, 60), (kx, ky - 3), 4, 2)
-            pygame.draw.rect(surface, (250, 220, 60), (kx - 1, ky - 1, 3, 8))
-            pygame.draw.rect(surface, (250, 220, 60), (kx + 1, ky + 3, 3, 2))
+            kx = self.key_rect.centerx - cam_x
+            ky = self.key_rect.centery - cam_y
+            # Subtle pulsating aura
+            pulse = math.sin(pygame.time.get_ticks() / 250.0) * 3
+            pygame.draw.circle(surface, (255, 230, 80), (int(kx), int(ky - 3)), int(6 + pulse), 1)
+            pygame.draw.circle(surface, (255, 215, 60), (int(kx), int(ky - 3)), 4)
+            pygame.draw.rect(surface, (255, 215, 60), (int(kx - 1), int(ky - 1), 3, 9))
+            pygame.draw.rect(surface, (255, 215, 60), (int(kx + 1), int(ky + 3), 3, 2))
 
-        # --- BATTERY ITEMS (if not collected) ---
+        # --- BATTERY ITEMS ---
         for bat in self.batteries:
             if not bat["collected"]:
                 r = bat["rect"]
@@ -610,7 +590,7 @@ class GameRoom:
 # 6. CREATURE CONTROLLER (Stalking & Freeze Mechanic)
 # ==============================================================================
 class Creature:
-    """The creature freezes in light, and repositions across the house when unseen."""
+    """The creature freezes in the flashlight beam, and repositions across the house when unseen."""
     def __init__(self):
         self.sprite = create_creature_surface()
         self.width = 40
@@ -678,6 +658,7 @@ class GameEngine:
 
         # Fonts
         self.font_title = pygame.font.SysFont("couriernew", 42, bold=True)
+        self.font_narrator = pygame.font.SysFont("couriernew", 20, bold=True)
         self.font_msg = pygame.font.SysFont("couriernew", 22, bold=True)
         self.font_hud = pygame.font.SysFont("couriernew", 16, bold=True)
         self.font_sm = pygame.font.SysFont("couriernew", 14, bold=True)
@@ -685,24 +666,41 @@ class GameEngine:
         # Audio manager
         self.audio = AudioManager()
 
-        # Dedicated lighting darkness surface
+        # Lighting darkness surface
         self.darkness_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 
         # Visual assets
         self.player_sprite = create_player_surface()
         self.jumpscare_sprite = create_jumpscare_surface()
 
-        # Game state reset
+        # Narrative Story Intro Lines
+        self.story_lines = [
+            "They told you it was just stress.",
+            "Just exhaustion playing tricks on your mind.",
+            "",
+            "You locked the doors, but you can still hear the floorboards creak.",
+            "You feel eyes watching you from the shadow.",
+            "",
+            "Your perception is slipping. Reality feels... unstable.",
+            "",
+            "Find the key. Conserve your light.",
+            "And whatever you do...",
+            "DON'T LOOK AWAY."
+        ]
+
         self.reset_game()
 
     def reset_game(self):
-        """Resets all states to allow instant [R] restart."""
+        """Resets all states to allow instant restart."""
         self.state = STATE_MENU
         self.state_timer = 0.0
 
-        # Player starts in Bedroom
-        self.player_x = 240.0
-        self.player_y = 240.0
+        # Intro Story Fade Timer
+        self.intro_timer = 0.0
+
+        # Player spawns in the Central Hallway outside the open rooms!
+        self.player_x = 520.0
+        self.player_y = 520.0
         self.player_angle = 0.0
         self.player_rect = pygame.Rect(int(self.player_x - PLAYER_SIZE // 2),
                                        int(self.player_y - PLAYER_SIZE // 2),
@@ -741,7 +739,6 @@ class GameEngine:
     def toggle_flashlight(self):
         """Toggles flashlight ON / OFF with mouse click or F key."""
         if self.battery <= 0.0:
-            # Battery dead: empty click
             self.audio.play("click", 0.7)
             self.flashlight_on = False
             return
@@ -823,7 +820,6 @@ class GameEngine:
             if dist < 65:
                 if d.is_exit:
                     if self.room.has_key:
-                        # Unlock exit door and trigger climax sequence!
                         d.is_open = True
                         self.state = STATE_ENDING_SEQUENCE
                         self.ending_phase = 1
@@ -835,7 +831,6 @@ class GameEngine:
                         self.show_message("THE DOOR IS LOCKED. FIND THE KEY.", 3.0)
                         return
                 else:
-                    # Regular interior door: toggle open/close!
                     d.toggle()
                     self.audio.play("door_open", 0.8)
                     return
@@ -858,7 +853,7 @@ class GameEngine:
                     bat["collected"] = True
                     self.battery = min(100.0, self.battery + BATTERY_REFILL)
                     self.audio.play("pickup_battery", 0.85)
-                    self.show_message("BATTERY FOUND (+45%)", 3.0)
+                    self.show_message(f"BATTERY FOUND (+{int(BATTERY_REFILL)}%)", 3.0)
                     return
 
     # --------------------------------------------------------------------------
@@ -890,11 +885,9 @@ class GameEngine:
         """Executes the scripted psychological instability sequence."""
         self.game_time += dt
 
-        # Initial narrative prompts
+        # Initial narrative prompts in game
         if self.game_time < 0.2:
-            self.show_message("I KNOW IT'S HERE.", 3.5)
-        elif 3.5 <= self.game_time < 3.7 and self.current_message == "":
-            self.show_message("FIND THE KEY.", 4.0)
+            self.show_message("I KNOW IT'S HERE. FIND THE KEY.", 4.0)
 
         # EVENT 1: The Bedroom Chair moves when player looks away
         if self.game_time >= 7.0 and not self.room.chair_has_moved:
@@ -912,7 +905,7 @@ class GameEngine:
                 self.room.painting_altered = True
 
         # EVENT 3: Creature awakens after initial exploration
-        if self.game_time >= 9.0 and not self.creature.is_active:
+        if self.game_time >= 10.0 and not self.creature.is_active:
             self.creature.is_active = True
 
         # Battery drain logic (Only drains while flashlight is ON)
@@ -1003,7 +996,10 @@ class GameEngine:
                 self.current_message = ""
 
         # State dispatch
-        if self.state == STATE_PLAYING:
+        if self.state == STATE_INTRO_STORY:
+            self.intro_timer += dt
+
+        elif self.state == STATE_PLAYING:
             self.handle_input(dt)
             self.update_story_and_instability(dt)
             self.update_creature(dt)
@@ -1042,8 +1038,8 @@ class GameEngine:
         px = int(self.player_x - self.cam_x)
         py = int(self.player_y - self.cam_y)
 
-        # Subtle personal halo around protagonist
-        personal_radius = 38 if self.flashlight_on else 12
+        # Personal halo around protagonist
+        personal_radius = 42 if self.flashlight_on else 12
         pygame.draw.circle(self.darkness_surf, (0, 0, 0, 0), (px, py), personal_radius)
 
         # Flashlight cone punch-through
@@ -1091,7 +1087,7 @@ class GameEngine:
             canvas.blit(t_theme, (SCREEN_WIDTH // 2 - t_theme.get_width() // 2, 270))
 
             ctrl1 = self.font_hud.render("WASD : Move   |   Mouse : Aim   |   Click/F : Flashlight ON/OFF", True, (180, 180, 180))
-            ctrl2 = self.font_hud.render("E : Open Doors & Interact   |   R : Restart", True, (160, 160, 160))
+            ctrl2 = self.font_hud.render("E : Open/Close Doors & Interact   |   R : Restart", True, (160, 160, 160))
             canvas.blit(ctrl1, (SCREEN_WIDTH // 2 - ctrl1.get_width() // 2, 360))
             canvas.blit(ctrl2, (SCREEN_WIDTH // 2 - ctrl2.get_width() // 2, 395))
 
@@ -1100,15 +1096,49 @@ class GameEngine:
                 t_start = self.font_msg.render("PRESS [SPACE] TO BEGIN", True, (255, 220, 100))
                 canvas.blit(t_start, (SCREEN_WIDTH // 2 - t_start.get_width() // 2, 470))
 
+        # ----------------- INTRO STORY SCREEN (FADE IN NARRATOR) -----------------
+        elif self.state == STATE_INTRO_STORY:
+            canvas.fill((8, 6, 10))
+
+            # Smooth fade in factor
+            fade_factor = min(1.0, self.intro_timer / 1.4)
+            text_alpha = int(255 * fade_factor)
+
+            # Draw eerie border box
+            box_rect = pygame.Rect(70, 50, SCREEN_WIDTH - 140, SCREEN_HEIGHT - 100)
+            pygame.draw.rect(canvas, (25, 20, 25), box_rect)
+            pygame.draw.rect(canvas, (75, 45, 45), box_rect, 2)
+
+            # Header
+            head_surf = self.font_hud.render("PROLOGUE — AN UNSTABLE PERCEPTION", True, (170, 75, 75))
+            canvas.blit(head_surf, (SCREEN_WIDTH // 2 - head_surf.get_width() // 2, 75))
+
+            # Narrative lines
+            start_y = 135
+            for i, line in enumerate(self.story_lines):
+                if line:
+                    is_last = (i >= len(self.story_lines) - 2)
+                    color = (245, 120, 120) if is_last else (int(215 * fade_factor), int(210 * fade_factor), int(205 * fade_factor))
+                    line_surf = self.font_narrator.render(line, True, color)
+                    canvas.blit(line_surf, (SCREEN_WIDTH // 2 - line_surf.get_width() // 2, start_y))
+                start_y += 34
+
+            # Blinking continue prompt
+            if self.intro_timer > 1.2:
+                blink = int(pygame.time.get_ticks() / 500) % 2 == 0
+                if blink:
+                    t_wake = self.font_msg.render("[ PRESS SPACE TO WAKE UP ]", True, (255, 220, 100))
+                    canvas.blit(t_wake, (SCREEN_WIDTH // 2 - t_wake.get_width() // 2, SCREEN_HEIGHT - 95))
+
         # ----------------- PLAYING & STORY STATES -----------------
         elif self.state in [STATE_PLAYING, STATE_ENDING_SEQUENCE]:
-            # 1. Environment (Floor, Walls, Furniture, Doors, Items)
+            # 1. Environment
             self.room.draw_environment(canvas, self.cam_x, self.cam_y, self.font_sm)
 
-            # 2. Creature (drawn under darkness)
+            # 2. Creature
             self.creature.draw(canvas, self.cam_x, self.cam_y)
 
-            # 3. Player Sprite (rotated towards mouse)
+            # 3. Player Sprite
             deg = -math.degrees(self.player_angle)
             rotated_player = pygame.transform.rotate(self.player_sprite, deg)
             screen_px = int(self.player_x - self.cam_x)
@@ -1146,7 +1176,6 @@ class GameEngine:
             px, py = self.player_x, self.player_y
             prompt = ""
 
-            # Check doors
             for d in self.room.doors:
                 if math.hypot(px - d.closed_rect.centerx, py - d.closed_rect.centery) < 65:
                     if d.is_exit:
@@ -1155,12 +1184,10 @@ class GameEngine:
                         prompt = "[E] Close Door" if d.is_open else f"[E] Open {d.name}"
                     break
 
-            # Check key
             if not prompt and not self.room.key_collected:
                 if math.hypot(px - self.room.key_rect.centerx, py - self.room.key_rect.centery) < 55:
                     prompt = "[E] Pick up Key"
 
-            # Check batteries
             if not prompt:
                 for b in self.room.batteries:
                     if not b["collected"] and math.hypot(px - b["rect"].centerx, py - b["rect"].centery) < 50:
@@ -1240,7 +1267,13 @@ class GameEngine:
 
                     elif event.key == pygame.K_SPACE:
                         if self.state == STATE_MENU:
+                            # Move to narrative prologue story screen
+                            self.state = STATE_INTRO_STORY
+                            self.intro_timer = 0.0
+                        elif self.state == STATE_INTRO_STORY:
+                            # Wake up into gameplay!
                             self.state = STATE_PLAYING
+                            self.show_message("FIND THE KEY TO ESCAPE.", 4.0)
 
                     elif event.key == pygame.K_e:
                         if self.state == STATE_PLAYING:
@@ -1252,10 +1285,13 @@ class GameEngine:
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if self.state == STATE_MENU:
+                        self.state = STATE_INTRO_STORY
+                        self.intro_timer = 0.0
+                    elif self.state == STATE_INTRO_STORY:
                         self.state = STATE_PLAYING
+                        self.show_message("FIND THE KEY TO ESCAPE.", 4.0)
                     elif self.state == STATE_PLAYING:
-                        # Click toggles flashlight ON / OFF!
-                        if event.button in [1, 3]:  # Left or Right Click
+                        if event.button in [1, 3]:  # Left or Right Click toggles flashlight
                             self.toggle_flashlight()
 
             self.update(dt)
