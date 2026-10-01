@@ -934,11 +934,35 @@ class GameRoom:
 # ==============================================================================
 # 6. CREATURE CONTROLLER (Stalking & Dynamic Poses)
 # ==============================================================================
+class MonsterSpriteSet:
+    """Loads the hand-made pixel monster poses used by the stalking creature.
+
+    The old procedural creature is deliberately NOT used: rendering both the
+    procedural sprite and the art asset made the monster look doubled/tacky.
+    """
+    def __init__(self):
+        self.sprites = []
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "monster")
+        for i in range(4):
+            path = os.path.join(base, f"monster{i}.png")
+            try:
+                sprite = pygame.image.load(path).convert_alpha()
+                self.sprites.append(sprite)
+            except Exception as exc:
+                print(f"[MonsterSpriteSet] Could not load {path}: {exc}")
+        if not self.sprites:
+            # Transparent fallback; never resurrect the old procedural monster.
+            self.sprites = [pygame.Surface((1, 1), pygame.SRCALPHA)]
+
+
 class Creature:
     """The creature freezes in the flashlight beam, and repositions across the house when unseen."""
     def __init__(self, positions=None):
-        self.poses = create_creature_poses()
+        # Use ONLY the supplied pixel-art monster. The old procedural sprite
+        # remains in the source as a fallback for reference, but is never drawn.
+        self.sprite_set = MonsterSpriteSet()
         self.pose_index = 0
+        self.stage_scales = [0.22, 0.28, 0.35, 0.43, 0.50]
         self.width = 40
         self.height = 52
 
@@ -977,7 +1001,7 @@ class Creature:
         else:
             self._reposition_near_player(player_pos)
 
-        self.pose_index = (self.pose_index + 1) % len(self.poses)
+        self.pose_index = min(self.stage, len(self.sprite_set.sprites) - 1)
         self.rect.center = (int(self.pos[0]), int(self.pos[1]))
 
     def _reposition_near_player(self, player_pos):
@@ -989,11 +1013,20 @@ class Creature:
         self.pos = [nx, ny]
 
     def draw(self, surface, cam_x, cam_y):
-        if self.is_active:
-            sprite = self.poses[self.pose_index]
-            draw_x = self.pos[0] - cam_x - sprite.get_width() // 2
-            draw_y = self.pos[1] - cam_y - sprite.get_height() // 2
-            surface.blit(sprite, (draw_x, draw_y))
+        if not self.is_active:
+            return
+
+        sprite = self.sprite_set.sprites[self.pose_index]
+        scale = self.stage_scales[min(self.stage, len(self.stage_scales) - 1)]
+        w = max(1, int(sprite.get_width() * scale))
+        h = max(1, int(sprite.get_height() * scale))
+        scaled = pygame.transform.scale(sprite, (w, h))
+
+        # Treat the creature position as its visual centre, just like the old
+        # controller did, while keeping the hand-made pose as the only monster.
+        draw_x = int(self.pos[0] - cam_x - scaled.get_width() / 2)
+        draw_y = int(self.pos[1] - cam_y - scaled.get_height() / 2)
+        surface.blit(scaled, (draw_x, draw_y))
 
 
 # ==============================================================================
@@ -1242,7 +1275,8 @@ class GameEngine:
         self.darkness_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 
         self.player_sprite = create_player_surface()
-        self.jumpscare_sprite = create_jumpscare_surface()
+        # Full-screen hand-made jumpscare art supplied for the ending.
+        self.jumpscare_sprite = self.load_jumpscare_image()
 
         # Pre-built vignette for sanity effects (radial dark edges)
         self.vignette_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -1277,6 +1311,24 @@ class GameEngine:
 
         self.debug_mode = False
         self.reset_game()
+
+    def load_jumpscare_image(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "jumpscare.png")
+        try:
+            source = pygame.image.load(path).convert()
+            sw, sh = source.get_size()
+            # Cover the screen without stretching the artwork's aspect ratio.
+            scale = max(SCREEN_WIDTH / sw, SCREEN_HEIGHT / sh)
+            nw, nh = int(sw * scale), int(sh * scale)
+            source = pygame.transform.smoothscale(source, (nw, nh))
+            x = (nw - SCREEN_WIDTH) // 2
+            y = (nh - SCREEN_HEIGHT) // 2
+            return source.subsurface((x, y, SCREEN_WIDTH, SCREEN_HEIGHT)).copy()
+        except Exception as exc:
+            print(f"[Game] Could not load jumpscare art: {exc}")
+            fallback = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            fallback.fill((4, 4, 6))
+            return fallback
 
     def reset_game(self):
         self.state = STATE_MENU
@@ -1825,11 +1877,15 @@ class GameEngine:
                 self.trigger_jumpscare()
 
     def trigger_jumpscare(self):
-        """Only triggered if caught in pitch darkness when battery reaches 0%."""
+        """Start the scripted jumpscare sequence with the supplied artwork."""
+        if self.state == STATE_JUMPSCARE or self.state == STATE_AMBIGUOUS_ENDING:
+            return
         self.state = STATE_JUMPSCARE
         self.state_timer = 0.0
-        self.audio.duck_for_jumpscare()
-        self.shake_amount = 7  # Significantly reduced screen shake
+        # The sequence starts with a hard blackout and the scare sound at t=0.
+        self.audio.stop_all()
+        self.audio.play("jumpscare", volume=1.0)
+        self.shake_amount = 0
 
     def update(self, dt):
         self.audio.update()
@@ -1916,8 +1972,13 @@ class GameEngine:
 
         elif self.state == STATE_JUMPSCARE:
             self.state_timer += dt
-            self.shake_amount = random.randint(4, 8)  # Gentle shake
-            if self.state_timer >= 2.2:
+            # 0.00-0.05 black; 0.05-0.40 monster; 0.40-0.70 black;
+            # 0.70-2.00 first line; then fade into the final line.
+            if 0.15 <= self.state_timer < 0.40:
+                self.shake_amount = random.randint(7, 14)
+            else:
+                self.shake_amount = 0
+            if self.state_timer >= 3.2:
                 self.state = STATE_AMBIGUOUS_ENDING
                 self.state_timer = 0.0
 
@@ -2218,14 +2279,6 @@ class GameEngine:
             self.render_lighting(canvas)
             self.draw_room_banner(canvas)
 
-            if self.creature.is_active and self.creature.is_illuminated:
-                cx = self.creature.pos[0] - self.cam_x
-                cy = self.creature.pos[1] - self.cam_y
-                pygame.draw.circle(canvas, (255, 255, 255), (int(cx - 4), int(cy - 14)), 2)
-                pygame.draw.circle(canvas, (255, 255, 255), (int(cx + 4), int(cy - 14)), 2)
-                pygame.draw.circle(canvas, (255, 60, 40), (int(cx - 4), int(cy - 14)), 1)
-                pygame.draw.circle(canvas, (255, 60, 40), (int(cx + 4), int(cy - 14)), 1)
-
             # Glints / highlight / guide arrows (drawn above the darkness)
             self.draw_interaction_cues(canvas)
 
@@ -2399,18 +2452,53 @@ class GameEngine:
                     t_sub = self.font_hud.render("Press [R] to Play Again   |   [ESC] to Quit", True, (160, 160, 160))
                     canvas.blit(t_sub, (SCREEN_WIDTH // 2 - t_sub.get_width() // 2, 580))
 
-        # ----------------- JUMPSCARE (Blackout Only) -----------------
+        # ----------------- JUMPSCARE (Scripted) -----------------
         elif self.state == STATE_JUMPSCARE:
-            if random.random() < 0.35:
-                canvas.fill((220, 20, 20))
-            elif random.random() < 0.2:
-                canvas.fill((255, 255, 255))
-            else:
-                canvas.fill((5, 5, 8))
+            t = self.state_timer
+            canvas.fill((3, 3, 5))
 
-            canvas.blit(self.jumpscare_sprite, (0, 0))
-            t_scare = self.font_msg.render("YOU SHOULD HAVE LOOKED BACK.", True, (255, 255, 255))
-            canvas.blit(t_scare, (SCREEN_WIDTH // 2 - t_scare.get_width() // 2, SCREEN_HEIGHT - 75))
+            if t < 0.05:
+                # Hard blackout before the image hits.
+                pass
+            elif t < 0.40:
+                # Full-screen supplied monster, with a very short punch-in.
+                zoom = 1.0 if t < 0.15 else 1.0 + min(0.18, (t - 0.15) / 0.25 * 0.18)
+                sw = max(1, int(SCREEN_WIDTH * zoom))
+                sh = max(1, int(SCREEN_HEIGHT * zoom))
+                img = pygame.transform.smoothscale(self.jumpscare_sprite, (sw, sh))
+                ox = (SCREEN_WIDTH - sw) // 2
+                oy = (SCREEN_HEIGHT - sh) // 2
+                if t >= 0.15:
+                    ox += random.randint(-10, 10)
+                    oy += random.randint(-8, 8)
+                canvas.blit(img, (ox, oy))
+
+                # One deliberate flash at the impact moment, rather than random
+                # flashing every frame (which was making the old scare muddy).
+                if 0.15 <= t < 0.20:
+                    flash_alpha = int(210 * (1.0 - (t - 0.15) / 0.05))
+                    flash = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                    flash.fill((220, 35, 35, flash_alpha))
+                    canvas.blit(flash, (0, 0))
+            elif t < 0.70:
+                # Monster is gone. Let the silence/blackness land.
+                pass
+            elif t < 2.00:
+                # First message appears after the black beat.
+                fade = min(1.0, (t - 0.70) / 0.18)
+                text = self.font_msg.render("YOU SHOULD HAVE LOOKED BACK.", True, (255, 255, 255))
+                text.set_alpha(int(255 * fade))
+                canvas.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, SCREEN_HEIGHT - 75))
+            else:
+                # Fade from the first line into the final realization.
+                fade = min(1.0, (t - 2.00) / 0.65)
+                text1 = self.font_msg.render("YOU SHOULD HAVE LOOKED BACK.", True, (255, 255, 255))
+                text1.set_alpha(int(255 * (1.0 - fade)))
+                canvas.blit(text1, (SCREEN_WIDTH // 2 - text1.get_width() // 2, SCREEN_HEIGHT - 75))
+
+                text2 = self.font_msg.render("There was never anyone else in the room.", True, (220, 215, 210))
+                text2.set_alpha(int(255 * fade))
+                canvas.blit(text2, (SCREEN_WIDTH // 2 - text2.get_width() // 2, SCREEN_HEIGHT // 2 - 30))
 
         # ----------------- AMBIGUOUS ENDING (Blackout Death) -----------------
         elif self.state == STATE_AMBIGUOUS_ENDING:

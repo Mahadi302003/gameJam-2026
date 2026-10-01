@@ -85,3 +85,7 @@ When you gather both the **Key** and **ID Card** and open the exit door:
 
 ## 🚀 How to Run
 Double-click **[`run_game.bat`](file:///c:/Users/gabit/Desktop/gamejam/run_game.bat)** or run in PyCharm (<kbd>Shift</kbd> + <kbd>F10</kbd>).
+
+
+## Monster / jumpscare update
+The stalking creature now renders only the supplied pixel-art monster poses. The old procedural creature and duplicate eye overlay are no longer drawn. The jumpscare uses `assets/jumpscare.png` with a scripted blackout, flash, shake, and text sequence.
