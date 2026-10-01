@@ -2444,27 +2444,74 @@ class GameEngine:
                 canvas.blit(t1, (SCREEN_WIDTH // 2 - t1.get_width() // 2, SCREEN_HEIGHT // 2 - 20))
 
             elif self.ending_phase == 2:
-                # Step into clean, brightly-lit medical care corridor
-                canvas.fill((235, 235, 240))  # Sterile clean white/pale grey
-                # Clean floor tiles
-                for y in range(0, SCREEN_HEIGHT, 60):
-                    pygame.draw.line(canvas, (215, 215, 220), (0, y), (SCREEN_WIDTH, y), 2)
-                for x in range(0, SCREEN_WIDTH, 80):
-                    pygame.draw.line(canvas, (215, 215, 220), (x, 0), (x, SCREEN_HEIGHT), 2)
+                # A quiet hospital corridor with one doorway back into Room 4.
+                door_w, door_h = 240, 256
+                door_x = SCREEN_WIDTH // 2 - door_w // 2
+                door_y = 460 - door_h
 
-                # Wall with Room 4 door
-                pygame.draw.rect(canvas, (180, 185, 195), (SCREEN_WIDTH // 2 - 120, 100, 240, 360))
-                pygame.draw.rect(canvas, (100, 105, 115), (SCREEN_WIDTH // 2 - 120, 100, 240, 360), 3)
+                # Lazy-load/cached door asset once
+                if not hasattr(self, "_ending_room4_door"):
+                    try:
+                        _door_path = os.path.join(
+                            os.path.dirname(os.path.abspath(__file__)),
+                            "assets",
+                            "ending_room4_door.png"
+                        )
+                        # The cutout has transparent pixels inside the dark opening;
+                        # keep their RGB values so the doorway matches the source art.
+                        self._ending_room4_door = pygame.image.load(_door_path).convert()
+                    except Exception as _door_exc:
+                        print(f"[EndingDoor] Could not load ending_room4_door.png: {_door_exc}")
+                        self._ending_room4_door = None
 
-                # Brass room sign: ROOM 4
-                pygame.draw.rect(canvas, (215, 190, 80), (SCREEN_WIDTH // 2 - 60, 140, 120, 45))
-                pygame.draw.rect(canvas, (140, 110, 30), (SCREEN_WIDTH // 2 - 60, 140, 120, 45), 2)
-                r_txt = self.font_hud.render("ROOM 4", True, (40, 35, 20))
+                canvas.fill((224, 229, 224))
+                pygame.draw.rect(canvas, (213, 221, 216), (0, 0, SCREEN_WIDTH, 332))
+                pygame.draw.rect(canvas, (169, 190, 181), (0, 332, SCREEN_WIDTH, 116))
+                pygame.draw.line(canvas, (111, 145, 137), (0, 332), (SCREEN_WIDTH, 332), 4)
+                pygame.draw.rect(canvas, (91, 117, 112), (0, 448, SCREEN_WIDTH, 12))
+
+                # Fluorescent ceiling light and the room number are mounted on the wall.
+                pygame.draw.rect(canvas, (171, 183, 180), (390, 32, 180, 24))
+                pygame.draw.rect(canvas, (248, 252, 243), (397, 37, 166, 12))
+                pygame.draw.rect(canvas, (98, 120, 117), (420, 140, 120, 45))
+                pygame.draw.rect(canvas, (241, 245, 239), (424, 144, 112, 37))
+                r_txt = self.font_hud.render("ROOM 4", True, (47, 65, 63))
                 canvas.blit(r_txt, (SCREEN_WIDTH // 2 - r_txt.get_width() // 2, 153))
 
-                # Note the unengaged door lock:
-                u_txt = self.font_msg.render("The door swings gently open. There was never a lock.", True, (70, 70, 80))
-                canvas.blit(u_txt, (SCREEN_WIDTH // 2 - u_txt.get_width() // 2, 510))
+                # Linoleum floor with subtle seams.
+                pygame.draw.rect(canvas, (177, 187, 183), (0, 460, SCREEN_WIDTH, SCREEN_HEIGHT - 460))
+                for y in range(520, SCREEN_HEIGHT, 60):
+                    pygame.draw.line(canvas, (155, 166, 162), (0, y), (SCREEN_WIDTH, y), 2)
+                for x in range(0, SCREEN_WIDTH, 120):
+                    pygame.draw.line(canvas, (166, 177, 173), (x, 460), (x, SCREEN_HEIGHT), 2)
+
+                if self._ending_room4_door:
+                    door_sprite = pygame.transform.scale(
+                        self._ending_room4_door,
+                        (door_w, door_h)
+                    )
+                    canvas.blit(door_sprite, (door_x, door_y))
+                else:
+                    # Minimal fallback if the external asset is missing
+                    pygame.draw.rect(canvas, (250, 250, 245), (door_x + 35, door_y + 20, 100, 165))
+                    pygame.draw.rect(canvas, (105, 95, 80), (door_x + 115, door_y + 20, 42, 165))
+
+                # Keep the original reveal text
+                u_txt = self.font_msg.render(
+                    "The door swings gently open. There was never a lock.",
+                    True,
+                    (47, 61, 61)
+                )
+                canvas.blit(
+                    u_txt,
+                    (SCREEN_WIDTH // 2 - u_txt.get_width() // 2, 510)
+                )
+
+                # Keep the doorway clear while softly darkening the screen edges.
+                if not hasattr(self, "_ending_vignette"):
+                    self._ending_vignette = self.vignette_surf.copy()
+                    self._ending_vignette.set_alpha(255)
+                canvas.blit(self._ending_vignette, (0, 0))
 
             elif self.ending_phase >= 3:
                 # Clean Observation Whiteboard
